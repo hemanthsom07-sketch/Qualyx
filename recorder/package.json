@@ -1,0 +1,12 @@
+{
+  "name": "qualyx-recorder",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.2",
+    "@types/chrome": "^0.0.269"
+  }
+}

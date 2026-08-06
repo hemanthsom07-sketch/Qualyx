@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Qualyx Recorder",
+  "version": "0.0.1",
+  "description": "Qualyx browser recorder foundation. Full semantic event capture (clicks, inputs, navigation, element/ARIA metadata) is implemented in a later milestone once the RecordedJourney contract is finalized.",
+  "action": {
+    "default_popup": "popup/popup.html"
+  },
+  "background": {
+    "service_worker": "dist/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["dist/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": []
+}

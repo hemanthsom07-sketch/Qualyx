@@ -3,10 +3,11 @@
   "private": true,
   "version": "0.0.1",
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json && esbuild src/content.ts --bundle --format=iife --platform=browser --target=es2020 --outfile=dist/src/content.js"
   },
   "devDependencies": {
-    "typescript": "^5.5.2",
-    "@types/chrome": "^0.0.269"
+    "@types/chrome": "^0.0.269",
+    "esbuild": "^0.28.1",
+    "typescript": "^5.5.2"
   }
 }

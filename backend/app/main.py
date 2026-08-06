@@ -1,15 +1,20 @@
 """
 Qualyx Backend — FastAPI application entrypoint.
 
-Scope for this milestone (per Task 3):
+Scope as of Task 4:
 - App startup
 - Health check
-- Project create/retrieve
+- Project create/retrieve (Task 3)
+- TestDefinition create/retrieve/list, scoped under a Project (Task 4,
+  backend-internal representation — not the frozen cross-module
+  TestDefinition contract; see app/models/test_definition.py docstring)
 
-Deliberately NOT included yet (per contract restrictions in Task 3):
-- RecordedJourney, TestDefinition, ExecutionRequest, ExecutionResult,
-  FailureDiagnosis, HealingProposal endpoints
-- Any Playwright execution wiring
+Deliberately NOT included yet:
+- RecordedJourney, ExecutionRequest, ExecutionResult, FailureDiagnosis,
+  HealingProposal cross-module contract endpoints
+- Any endpoint that triggers actual execution-engine runs (Task 4's
+  execution engine is standalone/independently invoked for this
+  milestone — see /execution-engine)
 - Any diagnosis/healing logic
 
 Those will be added in later milestones once the relevant shared
@@ -18,7 +23,7 @@ contracts/schemas are materialized in /shared.
 
 from fastapi import FastAPI
 
-from app.api.routes import health, projects
+from app.api.routes import health, projects, test_definitions
 from app.config import settings
 from app.database import init_db
 
@@ -26,6 +31,7 @@ app = FastAPI(title="Qualyx Backend", version="0.1.0")
 
 app.include_router(health.router)
 app.include_router(projects.router)
+app.include_router(test_definitions.router)
 
 
 @app.on_event("startup")

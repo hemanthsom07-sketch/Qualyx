@@ -1,11 +1,14 @@
-# Qualyx Backend (Claude 2 — Milestone 1)
+# Qualyx Backend (Claude 2 — Task 3 + Task 4)
 
 Minimal FastAPI + PostgreSQL + SQLAlchemy foundation.
 
-Scope of this milestone: app startup, health check, and Project
-create/retrieve. No cross-module contracts (RecordedJourney,
-TestDefinition, ExecutionRequest, ExecutionResult, FailureDiagnosis,
-HealingProposal) are implemented yet.
+Scope as of Task 4: app startup, health check, Project create/retrieve
+(Task 3), and TestDefinition create/retrieve/list scoped to a Project
+(Task 4). TestDefinition here is a backend-internal representation for
+this milestone, not the frozen cross-module TestDefinition contract from
+Task 2 (see `app/models/test_definition.py`). No other cross-module
+contracts (RecordedJourney, ExecutionRequest, ExecutionResult,
+FailureDiagnosis, HealingProposal) are implemented yet.
 
 ## Setup
 
@@ -37,6 +40,9 @@ uvicorn app.main:app --reload
 - Create project: `POST http://localhost:8000/projects`
 - Get project: `GET http://localhost:8000/projects/{project_id}`
 - List projects: `GET http://localhost:8000/projects`
+- Create test definition: `POST http://localhost:8000/projects/{project_id}/tests`
+- Get test definition: `GET http://localhost:8000/tests/{test_id}`
+- List test definitions for a project: `GET http://localhost:8000/projects/{project_id}/tests`
 
 ## Tests
 

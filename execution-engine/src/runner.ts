@@ -64,6 +64,7 @@ export async function runSteps(
   const stepResults: StepResult[] = [];
   let overallStatus: "passed" | "failed" = "passed";
   let failedStepIndex: number | null = null;
+  let failedStepId: string | null = null;
   let error: string | null = null;
 
   let browser: Browser | undefined;
@@ -79,6 +80,7 @@ export async function runSteps(
 
       stepResults.push({
         stepIndex: index,
+        ...(step.id !== undefined ? { id: step.id } : {}),
         type: step.type,
         status: outcome.status,
         durationMs,
@@ -88,6 +90,8 @@ export async function runSteps(
       if (outcome.status === "failed") {
         overallStatus = "failed";
         failedStepIndex = index;
+        // Never fabricated: null when the failed step had no id.
+        failedStepId = step.id ?? null;
         error = outcome.error ?? "Step failed with no error message";
         break; // fail-fast: deterministic single pass, no retries/healing
       }
@@ -104,6 +108,7 @@ export async function runSteps(
     status: overallStatus,
     steps: stepResults,
     failedStepIndex,
+    failedStepId,
     error,
     executedStepCount: stepResults.length,
     startedAt: startedAt.toISOString(),

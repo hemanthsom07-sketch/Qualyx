@@ -43,7 +43,9 @@ def create_test_definition(
         project_id=project_id,
         name=payload.name,
         description=payload.description,
-        content=[step.model_dump() for step in payload.content],
+        # exclude_none: don't store a spurious "id": null on steps that
+        # were never given a stable id (keeps old-shape content clean).
+        content=[step.model_dump(exclude_none=True) for step in payload.content],
     )
     db.add(test_definition)
     db.commit()

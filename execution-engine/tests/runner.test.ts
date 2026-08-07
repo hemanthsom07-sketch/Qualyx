@@ -142,3 +142,65 @@ test("runSteps accepts an options object (new preferred signature) equivalently 
     assert.equal(result.status, "passed");
   });
 });
+
+// --- Task 8: stable step ID propagation ---
+
+test("runSteps: a step with an id executes successfully and failedStepId is null on a passing run", async () => {
+  await withTestServer(async (baseUrl) => {
+    const steps = validateSteps([{ id: "gen-nav-1", type: "navigate", url: baseUrl }]);
+    const result = await runSteps(steps);
+
+    assert.equal(result.status, "passed");
+    assert.equal(result.failedStepIndex, null);
+    assert.equal(result.failedStepId, null);
+    assert.equal(result.steps[0].id, "gen-nav-1");
+  });
+});
+
+test("runSteps: a failed step with an id returns the correct failedStepIndex and failedStepId", async () => {
+  await withTestServer(async (baseUrl) => {
+    const steps = validateSteps([
+      { id: "gen-nav-1", type: "navigate", url: baseUrl },
+      { id: "gen-click-abc", type: "click", selector: "#does-not-exist" },
+    ]);
+
+    const result = await runSteps(steps);
+
+    assert.equal(result.status, "failed");
+    assert.equal(result.failedStepIndex, 1);
+    assert.equal(result.failedStepId, "gen-click-abc");
+    assert.equal(result.steps[1].id, "gen-click-abc");
+  });
+});
+
+test("runSteps: a failed step without an id returns failedStepId = null (never fabricated)", async () => {
+  await withTestServer(async (baseUrl) => {
+    const steps = validateSteps([
+      { type: "navigate", url: baseUrl },
+      { type: "click", selector: "#does-not-exist" },
+    ]);
+
+    const result = await runSteps(steps);
+
+    assert.equal(result.status, "failed");
+    assert.equal(result.failedStepIndex, 1);
+    assert.equal(result.failedStepId, null);
+    assert.equal(result.steps[1].id, undefined);
+  });
+});
+
+test("runSteps: existing steps without ids still execute correctly (backward compatibility)", async () => {
+  await withTestServer(async (baseUrl) => {
+    const steps = validateSteps([
+      { type: "navigate", url: baseUrl },
+      { type: "fill", selector: "#email", value: "user@example.com" },
+      { type: "click", selector: "#submit" },
+    ]);
+
+    const result = await runSteps(steps);
+
+    assert.equal(result.status, "passed");
+    assert.equal(result.failedStepId, null);
+    assert.ok(result.steps.every((s) => s.id === undefined));
+  });
+});

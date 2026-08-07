@@ -118,3 +118,51 @@ test("stdin-runner: exit code 2 on invalid JSON input", async () => {
   const payload = JSON.parse(stdout);
   assert.equal(payload.error, "invalid_json");
 });
+
+// --- Task 8: stable step IDs survive the real stdin/stdout subprocess boundary ---
+
+test("stdin-runner: a generated step id survives the boundary and comes back as failedStepId on failure", async () => {
+  await withTestServer(async (baseUrl) => {
+    const { exitCode, stdout } = await runStdinRunner({
+      steps: [
+        { id: "gen-nav-1", type: "navigate", url: baseUrl },
+        { id: "gen-click-abc", type: "click", selector: "#does-not-exist" },
+      ],
+    });
+
+    assert.equal(exitCode, 1);
+    const result = JSON.parse(stdout);
+    assert.equal(result.status, "failed");
+    assert.equal(result.failedStepIndex, 1);
+    assert.equal(result.failedStepId, "gen-click-abc");
+    assert.equal(result.steps[0].id, "gen-nav-1");
+    assert.equal(result.steps[1].id, "gen-click-abc");
+  });
+});
+
+test("stdin-runner: failedStepId is null on a passing run even when steps have ids", async () => {
+  await withTestServer(async (baseUrl) => {
+    const { exitCode, stdout } = await runStdinRunner({
+      steps: [{ id: "gen-nav-1", type: "navigate", url: baseUrl }],
+    });
+
+    assert.equal(exitCode, 0);
+    const result = JSON.parse(stdout);
+    assert.equal(result.status, "passed");
+    assert.equal(result.failedStepId, null);
+  });
+});
+
+test("stdin-runner: steps without ids still work end-to-end (backward compatibility)", async () => {
+  await withTestServer(async (baseUrl) => {
+    const { exitCode, stdout } = await runStdinRunner({
+      steps: [{ type: "navigate", url: baseUrl }],
+    });
+
+    assert.equal(exitCode, 0);
+    const result = JSON.parse(stdout);
+    assert.equal(result.status, "passed");
+    assert.equal(result.failedStepId, null);
+    assert.equal(result.steps[0].id, undefined);
+  });
+});

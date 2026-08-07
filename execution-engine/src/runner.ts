@@ -12,7 +12,7 @@
  */
 
 import { chromium, type Browser, type Page } from "playwright";
-import type { ExecutionResult, Step, StepResult, StepStatus } from "./types.js";
+import type { ExecutionResult, RunStepsOptions, Step, StepResult, StepStatus } from "./types.js";
 
 const DEFAULT_STEP_TIMEOUT_MS = 5000;
 
@@ -43,15 +43,28 @@ async function runSingleStep(page: Page, step: Step, baseUrl?: string): Promise<
  * Runs a validated sequence of steps against a fresh headless Chromium
  * page. Stops at the first failure (deterministic single pass).
  *
+ * This is the programmatic entry point other code (the CLI, the
+ * stdin/stdout runner used by the Backend, or tests) should call.
+ *
  * @param steps validated Step[] (see validate.ts — call validateSteps()
  *              on untrusted input before passing it here)
- * @param baseUrl optional base URL that relative "navigate" URLs resolve against
+ * @param optionsOrBaseUrl either a RunStepsOptions object (preferred,
+ *              e.g. `{ baseUrl }`) or, for backward compatibility with
+ *              Task 4 callers/tests, a bare baseUrl string.
  */
-export async function runSteps(steps: Step[], baseUrl?: string): Promise<ExecutionResult> {
+export async function runSteps(
+  steps: Step[],
+  optionsOrBaseUrl?: RunStepsOptions | string
+): Promise<ExecutionResult> {
+  const options: RunStepsOptions =
+    typeof optionsOrBaseUrl === "string" ? { baseUrl: optionsOrBaseUrl } : optionsOrBaseUrl ?? {};
+  const { baseUrl } = options;
+
   const startedAt = new Date();
   const stepResults: StepResult[] = [];
   let overallStatus: "passed" | "failed" = "passed";
-  let failedStepIndex: number | undefined;
+  let failedStepIndex: number | null = null;
+  let error: string | null = null;
 
   let browser: Browser | undefined;
   try {
@@ -75,6 +88,7 @@ export async function runSteps(steps: Step[], baseUrl?: string): Promise<Executi
       if (outcome.status === "failed") {
         overallStatus = "failed";
         failedStepIndex = index;
+        error = outcome.error ?? "Step failed with no error message";
         break; // fail-fast: deterministic single pass, no retries/healing
       }
     }
@@ -89,7 +103,9 @@ export async function runSteps(steps: Step[], baseUrl?: string): Promise<Executi
   return {
     status: overallStatus,
     steps: stepResults,
-    ...(failedStepIndex !== undefined ? { failedStepIndex } : {}),
+    failedStepIndex,
+    error,
+    executedStepCount: stepResults.length,
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),

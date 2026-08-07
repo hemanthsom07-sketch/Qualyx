@@ -1,21 +1,21 @@
 """
 Qualyx Backend — FastAPI application entrypoint.
 
-Scope as of Task 4:
+Scope as of Task 6:
 - App startup
 - Health check
 - Project create/retrieve (Task 3)
 - TestDefinition create/retrieve/list, scoped under a Project (Task 4,
   backend-internal representation — not the frozen cross-module
   TestDefinition contract; see app/models/test_definition.py docstring)
+- TestDefinition execution via the Execution Engine subprocess boundary
+  (Task 6 — see app/services/execution_client.py). No browser automation
+  happens in Python; this only invokes and reports the engine's result.
 
 Deliberately NOT included yet:
-- RecordedJourney, ExecutionRequest, ExecutionResult, FailureDiagnosis,
-  HealingProposal cross-module contract endpoints
-- Any endpoint that triggers actual execution-engine runs (Task 4's
-  execution engine is standalone/independently invoked for this
-  milestone — see /execution-engine)
-- Any diagnosis/healing logic
+- RecordedJourney, ExecutionRequest (as a stored/queued entity),
+  FailureDiagnosis, HealingProposal cross-module contract endpoints
+- Any diagnosis/healing/classification logic (Claude 3's domain)
 
 Those will be added in later milestones once the relevant shared
 contracts/schemas are materialized in /shared.

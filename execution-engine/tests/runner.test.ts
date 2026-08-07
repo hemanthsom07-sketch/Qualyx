@@ -59,7 +59,11 @@ test("runSteps executes a real navigate/click/fill sequence successfully against
     assert.equal(result.status, "passed");
     assert.equal(result.steps.length, 3);
     assert.ok(result.steps.every((s) => s.status === "passed"));
-    assert.equal(result.failedStepIndex, undefined);
+    // Task 6 §C requires failedStepIndex to be an explicit `number | null`
+    // rather than Task 4's optional/undefined field — updated accordingly
+    // (see Task 6 report). The behavior being verified (no failure
+    // occurred) is unchanged.
+    assert.equal(result.failedStepIndex, null);
     assert.ok(result.durationMs >= 0);
   });
 });
@@ -96,4 +100,45 @@ test("runSteps reports a failed navigate to an unreachable host", async () => {
   const result = await runSteps(steps);
   assert.equal(result.status, "failed");
   assert.equal(result.failedStepIndex, 0);
+});
+
+// --- Task 6: ExecutionResult contract additions ---
+
+test("runSteps ExecutionResult includes the Task 6 required fields on success", async () => {
+  await withTestServer(async (baseUrl) => {
+    const steps = validateSteps([{ type: "navigate", url: baseUrl }]);
+    const result = await runSteps(steps);
+
+    assert.equal(result.status, "passed");
+    assert.equal(result.failedStepIndex, null);
+    assert.equal(result.error, null);
+    assert.equal(result.executedStepCount, 1);
+  });
+});
+
+test("runSteps ExecutionResult includes the Task 6 required fields on failure", async () => {
+  await withTestServer(async (baseUrl) => {
+    const steps = validateSteps([
+      { type: "navigate", url: baseUrl },
+      { type: "click", selector: "#does-not-exist" },
+      { type: "fill", selector: "#email", value: "should-not-run" },
+    ]);
+
+    const result = await runSteps(steps);
+
+    assert.equal(result.status, "failed");
+    assert.equal(result.failedStepIndex, 1);
+    assert.equal(typeof result.error, "string");
+    assert.ok(result.error && result.error.length > 0);
+    // executedStepCount counts only attempted steps (fail-fast: 2, not 3)
+    assert.equal(result.executedStepCount, 2);
+  });
+});
+
+test("runSteps accepts an options object (new preferred signature) equivalently to a bare baseUrl string", async () => {
+  await withTestServer(async (baseUrl) => {
+    const steps = validateSteps([{ type: "navigate", url: "/" }]);
+    const result = await runSteps(steps, { baseUrl });
+    assert.equal(result.status, "passed");
+  });
 });

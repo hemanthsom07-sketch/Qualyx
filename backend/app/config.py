@@ -26,5 +26,22 @@ class Settings(BaseSettings):
     # migrations before this becomes a real multi-developer concern.
     db_auto_create: bool = True
 
+    # --- Execution Engine boundary (Task 6) ---
+    # Path to the execution-engine directory. If unset, it's derived from
+    # the repository layout, assuming backend/ and execution-engine/ are
+    # sibling directories under the repo root (see services/execution_client.py).
+    execution_engine_dir: str | None = None
+
+    # Command used to invoke the execution engine's stdin/stdout entry
+    # point. Defaults to `npx tsx`, matching the engine's existing tsx-based
+    # scripts (package.json). Overridable for environments that prefer a
+    # compiled `node dist/stdin-runner.js` instead.
+    execution_engine_command: list[str] = ["npx", "tsx"]
+
+    # Overall subprocess timeout (seconds). This bounds the whole run
+    # (all steps), separate from the execution engine's own 5s-per-step
+    # internal timeout.
+    execution_engine_timeout_seconds: int = 30
+
 
 settings = Settings()

@@ -38,6 +38,7 @@ class LocalJourneyUnderstandingStep:
     url: Optional[str] = None
     element: Optional[LocalNormalizedElement] = None
     value: Optional[str] = None  # only for STEP_FILL
+    redacted: bool = False  # true if the source event's value was withheld by the Recorder
 
 
 @dataclass

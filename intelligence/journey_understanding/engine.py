@@ -91,6 +91,7 @@ def understand_journey(raw_journey: LocalRawJourney) -> LocalNormalizedJourney:
                     url=raw_event.url,
                     element=_normalize_element(raw_event),
                     value=raw_event.input_value,
+                    redacted=raw_event.redacted,
                 )
             )
 

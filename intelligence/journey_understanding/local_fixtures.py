@@ -45,6 +45,7 @@ class LocalRawEvent:
     url: Optional[str] = None
     element: Optional[LocalRawElementInfo] = None
     input_value: Optional[str] = None  # only relevant for input_change
+    redacted: bool = False  # true if the Recorder withheld the real value
 
 
 @dataclass

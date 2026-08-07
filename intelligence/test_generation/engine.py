@@ -80,6 +80,7 @@ def generate_test(normalized_journey: LocalNormalizedJourney) -> LocalGeneratedT
                     step_id=f"gen-{step.step_id}",
                     kind=GEN_STEP_NAVIGATE,
                     source_step_id=step.step_id,
+                    source_event_id=step.source_event_id,
                     url=step.url,
                 )
             )
@@ -103,6 +104,7 @@ def generate_test(normalized_journey: LocalNormalizedJourney) -> LocalGeneratedT
                     step_id=f"gen-{step.step_id}",
                     kind=GEN_STEP_CLICK,
                     source_step_id=step.step_id,
+                    source_event_id=step.source_event_id,
                     selector=selector,
                     selector_kind=selector_kind,
                 )
@@ -148,6 +150,7 @@ def generate_test(normalized_journey: LocalNormalizedJourney) -> LocalGeneratedT
                     step_id=f"gen-{step.step_id}",
                     kind=GEN_STEP_FILL,
                     source_step_id=step.step_id,
+                    source_event_id=step.source_event_id,
                     selector=selector,
                     selector_kind=selector_kind,
                     value=step.value,

@@ -16,6 +16,13 @@ Two entry points are provided:
    understand_journey() -> generate_test() pipeline. This is the
    entry point intended for real integration.
 
+3. generate_execution_payload_from_real_recorder_events(journey_id, events)
+   (Task 8) Same as #2, but additionally serializes the result into
+   the exact JSON shape Claude 2's Execution Engine expects:
+   {"steps": [{"id": ..., "type": ..., ...}]}. Added for Task 8;
+   composes existing, unmodified logic plus the new
+   test_generation.execution_payload serializer -- no new ID scheme.
+
 Neither entry point adds new classification or generation logic --
 they are pure composition/translation on top of the already-tested
 Task 3/4 engines.
@@ -34,6 +41,7 @@ from .journey_understanding.local_fixtures import LocalRawJourney
 from .journey_understanding.recorder_adapter import RealRecordedEvent, adapt_real_journey
 from .test_generation import generate_test
 from .test_generation.generated_test import LocalGeneratedTest
+from .test_generation.execution_payload import to_execution_test_payload
 
 
 def generate_test_from_recorded_events(raw_journey: LocalRawJourney) -> LocalGeneratedTest:
@@ -74,3 +82,21 @@ def generate_test_from_real_recorder_events(
     normalized_journey = understand_journey(raw_journey)
     generated = generate_test(normalized_journey)
     return generated
+
+
+def generate_execution_payload_from_real_recorder_events(
+    journey_id: str, events: list[RealRecordedEvent]
+) -> dict:
+    """
+    (Task 8) Full pipeline entry point that returns the exact JSON
+    payload shape Claude 2's Execution Engine expects:
+
+        {"journeyId": ..., "steps": [{"id": ..., "type": ..., ...}]}
+
+    Composes the unmodified generate_test_from_real_recorder_events()
+    pipeline with to_execution_test_payload() for serialization only.
+    "id" on each step is the same deterministic Task 7 step_id -- no
+    new identifier is generated here.
+    """
+    generated = generate_test_from_real_recorder_events(journey_id, events)
+    return to_execution_test_payload(generated)

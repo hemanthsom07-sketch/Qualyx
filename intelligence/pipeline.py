@@ -23,9 +23,18 @@ Two entry points are provided:
    composes existing, unmodified logic plus the new
    test_generation.execution_payload serializer -- no new ID scheme.
 
-Neither entry point adds new classification or generation logic --
-they are pure composition/translation on top of the already-tested
-Task 3/4 engines.
+4. prepare_integration_ready_test_from_real_recorder_events(journey_id, events)
+   (Task 9) The entry point intended for the next integration stage.
+   Runs generation exactly once and returns BOTH the provenance-rich
+   LocalGeneratedTest (stable IDs, source_event_id/source_step_id,
+   ungeneratable_steps with reasons) and the execution-ready payload,
+   bundled in an IntegrationReadyResult, so a caller doesn't have to
+   invoke the pipeline twice (and risk the two results drifting apart)
+   to get both views of the same generation pass.
+
+None of these entry points adds new classification or generation
+logic -- they are pure composition/translation on top of the
+already-tested Task 3/4/7/8 engines.
 
 Redaction handling: if the Recorder has already redacted a sensitive
 input value (value=None, redacted=True in the real contract), this
@@ -42,6 +51,7 @@ from .journey_understanding.recorder_adapter import RealRecordedEvent, adapt_rea
 from .test_generation import generate_test
 from .test_generation.generated_test import LocalGeneratedTest
 from .test_generation.execution_payload import to_execution_test_payload
+from .test_generation.integration_ready import IntegrationReadyResult, build_integration_ready_result
 
 
 def generate_test_from_recorded_events(raw_journey: LocalRawJourney) -> LocalGeneratedTest:
@@ -100,3 +110,20 @@ def generate_execution_payload_from_real_recorder_events(
     """
     generated = generate_test_from_real_recorder_events(journey_id, events)
     return to_execution_test_payload(generated)
+
+
+def prepare_integration_ready_test_from_real_recorder_events(
+    journey_id: str, events: list[RealRecordedEvent]
+) -> IntegrationReadyResult:
+    """
+    (Task 9) Runs the real-Recorder pipeline exactly once and returns
+    both the provenance-rich LocalGeneratedTest and its execution-ready
+    payload together, via IntegrationReadyResult. This is the entry
+    point intended for the next integration stage: a caller can send
+    result.execution_payload straight to the Execution Engine while
+    still having result.generated_test available for storage, display
+    of ungeneratable_steps, or future diagnosis correlation -- without
+    generating the test twice.
+    """
+    generated = generate_test_from_real_recorder_events(journey_id, events)
+    return build_integration_ready_result(generated)

@@ -5,7 +5,7 @@ from app.database import get_db
 from app.models.project import Project
 from app.models.test_definition import TestDefinition
 from app.schemas.execution import ExecutionResultOut
-from app.schemas.test_definition import TestDefinitionCreate, TestDefinitionRead
+from app.schemas.test_definition import ExecutionPayloadCreate, TestDefinitionCreate, TestDefinitionRead
 from app.services.execution_client import (
     ExecutionEngineError,
     ExecutionValidationError,
@@ -45,7 +45,50 @@ def create_test_definition(
         description=payload.description,
         # exclude_none: don't store a spurious "id": null on steps that
         # were never given a stable id (keeps old-shape content clean).
-        content=[step.model_dump(exclude_none=True) for step in payload.content],
+        # by_alias: store "selectorKind" under that same key, not the
+        # Python-side "selector_kind" name.
+        content=[step.model_dump(exclude_none=True, by_alias=True) for step in payload.content],
+    )
+    db.add(test_definition)
+    db.commit()
+    db.refresh(test_definition)
+    return test_definition
+
+
+@router.post(
+    "/projects/{project_id}/tests/from-execution-payload",
+    response_model=TestDefinitionRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_test_definition_from_execution_payload(
+    project_id: str, payload: ExecutionPayloadCreate, db: Session = Depends(get_db)
+) -> TestDefinition:
+    """
+    Ingests Claude 3's Intelligence execution payload
+    ({"journeyId": ..., "steps": [...]}, as produced by
+    test_generation/execution_payload.py's to_execution_test_payload())
+    directly, storing it as a TestDefinition under an existing Project.
+
+    Mapping (per approved integration decision):
+        journeyId -> TestDefinition.name (used verbatim, no invented naming)
+        steps     -> TestDefinition.content (stable id, type, url,
+                     selector, value, and optional selectorKind all
+                     preserved; source_step_id/source_event_id are not
+                     part of this payload's contract and are not
+                     accepted here)
+
+    Reuses the exact same step validation as create_test_definition()
+    (the shared `Step` union), and once stored, the resulting
+    TestDefinition is executed via the existing, unmodified
+    POST /tests/{test_id}/execute path — no separate execution logic.
+    """
+    _get_project_or_404(project_id, db)
+
+    test_definition = TestDefinition(
+        project_id=project_id,
+        name=payload.journey_id,
+        description=None,
+        content=[step.model_dump(exclude_none=True, by_alias=True) for step in payload.steps],
     )
     db.add(test_definition)
     db.commit()

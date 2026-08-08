@@ -11,6 +11,10 @@ Scope as of Task 6:
 - TestDefinition execution via the Execution Engine subprocess boundary
   (Task 6 — see app/services/execution_client.py). No browser automation
   happens in Python; this only invokes and reports the engine's result.
+- Ingesting Claude 3's Intelligence execution payload directly
+  ({"journeyId", "steps": [...]}) into a TestDefinition, via
+  POST /projects/{project_id}/tests/from-execution-payload — see
+  app/schemas/test_definition.py's ExecutionPayloadCreate docstring.
 
 Deliberately NOT included yet:
 - RecordedJourney, ExecutionRequest (as a stored/queued entity),

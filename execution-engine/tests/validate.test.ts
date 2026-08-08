@@ -42,3 +42,35 @@ test("validateSteps rejects a fill step missing selector", () => {
 test("validateSteps rejects a fill step with non-string value", () => {
   assert.throws(() => validateSteps([{ type: "fill", selector: "#x", value: 123 }]), StepValidationError);
 });
+
+// --- Task 8: stable step ID propagation ---
+
+test("validateSteps preserves an optional stable id on each step type", () => {
+  const steps = validateSteps([
+    { id: "gen-nav-1", type: "navigate", url: "https://example.com" },
+    { id: "gen-click-2", type: "click", selector: "#submit" },
+    { id: "gen-fill-3", type: "fill", selector: "#email", value: "user@example.com" },
+  ]);
+  assert.equal(steps[0].id, "gen-nav-1");
+  assert.equal(steps[1].id, "gen-click-2");
+  assert.equal(steps[2].id, "gen-fill-3");
+});
+
+test("validateSteps does not require an id (backward compatibility)", () => {
+  const steps = validateSteps([{ type: "navigate", url: "https://example.com" }]);
+  assert.equal(steps[0].id, undefined);
+});
+
+test("validateSteps rejects a non-string id", () => {
+  assert.throws(
+    () => validateSteps([{ id: 123, type: "navigate", url: "https://example.com" }]),
+    StepValidationError
+  );
+});
+
+test("validateSteps rejects an empty-string id", () => {
+  assert.throws(
+    () => validateSteps([{ id: "", type: "navigate", url: "https://example.com" }]),
+    StepValidationError
+  );
+});

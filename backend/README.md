@@ -1,14 +1,19 @@
-# Qualyx Backend (Claude 2 — Task 3 + Task 4)
+# Qualyx Backend (Claude 2 — Task 3 + Task 4 + Task 6)
 
 Minimal FastAPI + PostgreSQL + SQLAlchemy foundation.
 
-Scope as of Task 4: app startup, health check, Project create/retrieve
-(Task 3), and TestDefinition create/retrieve/list scoped to a Project
-(Task 4). TestDefinition here is a backend-internal representation for
-this milestone, not the frozen cross-module TestDefinition contract from
-Task 2 (see `app/models/test_definition.py`). No other cross-module
-contracts (RecordedJourney, ExecutionRequest, ExecutionResult,
-FailureDiagnosis, HealingProposal) are implemented yet.
+Scope as of Task 6: app startup, health check, Project create/retrieve
+(Task 3), TestDefinition create/retrieve/list scoped to a Project
+(Task 4), and executing a TestDefinition via the Execution Engine
+(Task 6). TestDefinition remains a backend-internal representation for
+this milestone, not the frozen cross-module TestDefinition contract (see
+`app/models/test_definition.py`). No other cross-module contracts
+(RecordedJourney, FailureDiagnosis, HealingProposal) are implemented yet.
+
+The backend never implements browser automation itself — executing a
+test invokes the existing Node/TypeScript Execution Engine as a
+subprocess over a small JSON stdin/stdout protocol (see
+`app/services/execution_client.py`).
 
 ## Setup
 
@@ -43,6 +48,23 @@ uvicorn app.main:app --reload
 - Create test definition: `POST http://localhost:8000/projects/{project_id}/tests`
 - Get test definition: `GET http://localhost:8000/tests/{test_id}`
 - List test definitions for a project: `GET http://localhost:8000/projects/{project_id}/tests`
+- Execute a test definition: `POST http://localhost:8000/tests/{test_id}/execute`
+
+### Executing a test definition
+
+`POST /tests/{test_id}/execute` re-validates the stored steps and runs
+them via the Execution Engine subprocess. It requires Node.js and the
+execution engine's dependencies to be set up (see
+`../execution-engine/README.md`) and reachable at the path configured by
+`EXECUTION_ENGINE_DIR` (defaults to a sibling `../execution-engine`
+directory next to `backend/`).
+
+Responses:
+- `200` — execution ran (body's `status` is `"passed"` or `"failed"`;
+  a failed *test* is still a successful API call)
+- `404` — no such test definition
+- `422` — the stored steps failed the engine's own validation
+- `502` — the execution engine subprocess itself failed/timed out
 
 ## Tests
 

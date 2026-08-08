@@ -20,10 +20,29 @@ GEN_STEP_FILL = "fill"
 
 @dataclass
 class LocalGeneratedStep:
-    """One deterministically generated test step."""
+    """
+    One deterministically generated test step.
+
+    Stable ID design (Task 7):
+    step_id is deterministic, derived from the source Recorder event's
+    real id via the chain:
+        raw_event.event_id -> normalized step_id ("step-{event_id}")
+        -> this step_id ("gen-{normalized step_id}")
+    It contains no random UUIDs, no timestamps, and is not based on
+    array position alone (position is only used as part of a
+    documented fallback in journey_understanding.engine when a source
+    event has no usable id -- see _resolve_step_id_source there).
+
+    source_event_id is carried through directly from the original
+    Recorder event (see journey_understanding.local_fixtures /
+    recorder_adapter) so a generated step can be mapped straight back
+    to the Recorder event that produced it, without requiring a
+    separate lookup through the normalized journey step.
+    """
     step_id: str
     kind: str  # GEN_STEP_NAVIGATE / GEN_STEP_CLICK / GEN_STEP_FILL
     source_step_id: str  # traceability back to the normalized journey step
+    source_event_id: Optional[str] = None  # traceability back to the raw Recorder event id
     url: Optional[str] = None
     selector: Optional[str] = None
     selector_kind: Optional[str] = None  # "data-testid" / "id" (only stable kinds)

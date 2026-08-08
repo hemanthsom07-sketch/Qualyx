@@ -27,6 +27,11 @@ from .normalized_journey import (
     STEP_CLICK,
     STEP_FILL,
 )
+from .recorder_adapter import (
+    RealRecordedEvent,
+    adapt_real_event,
+    adapt_real_journey,
+)
 
 __all__ = [
     "understand_journey",
@@ -43,4 +48,7 @@ __all__ = [
     "STEP_NAVIGATE",
     "STEP_CLICK",
     "STEP_FILL",
+    "RealRecordedEvent",
+    "adapt_real_event",
+    "adapt_real_journey",
 ]

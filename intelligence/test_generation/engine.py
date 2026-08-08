@@ -80,6 +80,7 @@ def generate_test(normalized_journey: LocalNormalizedJourney) -> LocalGeneratedT
                     step_id=f"gen-{step.step_id}",
                     kind=GEN_STEP_NAVIGATE,
                     source_step_id=step.step_id,
+                    source_event_id=step.source_event_id,
                     url=step.url,
                 )
             )
@@ -103,6 +104,7 @@ def generate_test(normalized_journey: LocalNormalizedJourney) -> LocalGeneratedT
                     step_id=f"gen-{step.step_id}",
                     kind=GEN_STEP_CLICK,
                     source_step_id=step.step_id,
+                    source_event_id=step.source_event_id,
                     selector=selector,
                     selector_kind=selector_kind,
                 )
@@ -123,18 +125,32 @@ def generate_test(normalized_journey: LocalNormalizedJourney) -> LocalGeneratedT
                 )
                 continue
             if step.value is None:
-                ungeneratable_steps.append(
-                    LocalUngeneratableStep(
-                        source_step_id=step.step_id,
-                        reason="Fill step has a stable selector but no value to fill.",
+                if step.redacted:
+                    ungeneratable_steps.append(
+                        LocalUngeneratableStep(
+                            source_step_id=step.step_id,
+                            reason=(
+                                "Fill step has a stable selector, but the Recorder "
+                                "redacted this input's value. Intelligence never "
+                                "fabricates or reconstructs redacted values, so this "
+                                "step cannot be safely generated."
+                            ),
+                        )
                     )
-                )
+                else:
+                    ungeneratable_steps.append(
+                        LocalUngeneratableStep(
+                            source_step_id=step.step_id,
+                            reason="Fill step has a stable selector but no value to fill.",
+                        )
+                    )
                 continue
             generated_steps.append(
                 LocalGeneratedStep(
                     step_id=f"gen-{step.step_id}",
                     kind=GEN_STEP_FILL,
                     source_step_id=step.step_id,
+                    source_event_id=step.source_event_id,
                     selector=selector,
                     selector_kind=selector_kind,
                     value=step.value,

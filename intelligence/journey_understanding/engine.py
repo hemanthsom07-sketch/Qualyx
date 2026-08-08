@@ -50,20 +50,44 @@ def _normalize_element(raw_event: LocalRawEvent) -> LocalNormalizedElement | Non
     )
 
 
+def _resolve_step_id_source(raw_event: LocalRawEvent, index: int) -> str:
+    """
+    Returns the identifier used to build this step's deterministic
+    step_id. Prefers the real Recorder event id (raw_event.event_id).
+
+    Fallback (only when raw_event.event_id is missing/empty): a
+    deterministic value derived from this event's position in the
+    journey and its event type -- never random, never timestamp-based.
+    This fallback is NOT presented as a real Recorder event id; it
+    exists solely so step_id stays deterministic and unique even if
+    an event somehow arrives without one. raw_event.event_id itself
+    (see source_event_id on the normalized step) is left untouched --
+    still whatever the raw event actually had, including empty/None --
+    so nothing is fabricated as if it came from the Recorder.
+    """
+    if raw_event.event_id:
+        return raw_event.event_id
+    return f"noid-idx{index}-{raw_event.event_type}"
+
+
 def understand_journey(raw_journey: LocalRawJourney) -> LocalNormalizedJourney:
     """
     Deterministically transform a raw event sequence into a normalized
     journey. Event order is preserved. Unsupported events are skipped
     safely (tracked, not dropped silently) rather than guessed at.
+
+    Each normalized step's step_id is deterministic: derived from the
+    source event's real id where available (see _resolve_step_id_source
+    for the fallback used when it is not).
     """
     normalized_steps: list[LocalJourneyUnderstandingStep] = []
     skipped_event_ids: list[str] = []
 
-    for raw_event in raw_journey.events:
+    for index, raw_event in enumerate(raw_journey.events):
         if raw_event.event_type == EVENT_PAGE_LOAD:
             normalized_steps.append(
                 LocalJourneyUnderstandingStep(
-                    step_id=f"step-{raw_event.event_id}",
+                    step_id=f"step-{_resolve_step_id_source(raw_event, index)}",
                     kind=STEP_NAVIGATE,
                     source_event_id=raw_event.event_id,
                     url=raw_event.url,
@@ -74,7 +98,7 @@ def understand_journey(raw_journey: LocalRawJourney) -> LocalNormalizedJourney:
         elif raw_event.event_type == EVENT_CLICK:
             normalized_steps.append(
                 LocalJourneyUnderstandingStep(
-                    step_id=f"step-{raw_event.event_id}",
+                    step_id=f"step-{_resolve_step_id_source(raw_event, index)}",
                     kind=STEP_CLICK,
                     source_event_id=raw_event.event_id,
                     url=raw_event.url,
@@ -85,12 +109,13 @@ def understand_journey(raw_journey: LocalRawJourney) -> LocalNormalizedJourney:
         elif raw_event.event_type == EVENT_INPUT_CHANGE:
             normalized_steps.append(
                 LocalJourneyUnderstandingStep(
-                    step_id=f"step-{raw_event.event_id}",
+                    step_id=f"step-{_resolve_step_id_source(raw_event, index)}",
                     kind=STEP_FILL,
                     source_event_id=raw_event.event_id,
                     url=raw_event.url,
                     element=_normalize_element(raw_event),
                     value=raw_event.input_value,
+                    redacted=raw_event.redacted,
                 )
             )
 

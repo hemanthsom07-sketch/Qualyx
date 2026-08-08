@@ -1,4 +1,4 @@
-# Qualyx Execution Engine (Claude 2 — Task 4 + Task 6)
+# Qualyx Execution Engine (Claude 2 — Task 4 + Task 6 + Task 8 + Execution Evidence Foundation)
 
 Ownership: Claude 2 (Backend, Database, Playwright Execution Engine, Orchestration).
 
@@ -49,17 +49,72 @@ interface ExecutionResult {
   status: "passed" | "failed";
   steps: StepResult[];        // additive detail retained from Task 4
   failedStepIndex: number | null;
+  failedStepId: string | null;   // Task 8 — never fabricated
   error: string | null;
   executedStepCount: number;
   startedAt: string;          // additive detail retained from Task 4
   finishedAt: string;         // additive detail retained from Task 4
   durationMs: number;         // additive detail retained from Task 4
+  evidence: FailureEvidence | null;   // Execution Evidence Foundation — see below
 }
 ```
 
 `status`, `failedStepIndex`, `error`, and `executedStepCount` are the
 Task 6-required minimum. No diagnosis/classification (application bug
 vs. broken test) happens here — that's Claude 3's Intelligence module.
+
+## Execution Evidence Foundation
+
+`evidence` is `null` on a passing run. On a failing run, it's a
+structured, deterministic description of the failure — never fabricated,
+never a diagnosis:
+
+```ts
+interface FailureEvidence {
+  failedStepId: string | null;      // same value as the top-level field
+  failedStepIndex: number;          // same value as the top-level field
+  stepType: "navigate" | "click" | "fill";
+  action: { url?: string; selector?: string };  // NEVER includes a fill value
+  errorMessage: string;
+  errorCategory: "assertion" | "selector" | "navigation" | "timeout"
+               | "network" | "validation" | "unknown";
+  pageUrl: string | null;           // page.url() at the moment of failure
+  httpStatus: number | null;        // see note below — currently always null
+  executedStepCount: number;
+  stepDurationMs: number;
+}
+```
+
+**Error categorization** is deterministic, derived from empirically
+observed Playwright error shapes (not guessed):
+
+| Step type | Signal | Category |
+|---|---|---|
+| navigate | message matches `net::ERR_*` | `network` |
+| navigate | `TimeoutError` (no response ever received) | `navigation` |
+| click/fill | `TimeoutError` + message contains `waiting for locator(` | `selector` |
+| click/fill | message contains `parsing css selector` / `Unexpected token` | `selector` |
+| click/fill | `TimeoutError`, no locator-wait pattern matched | `timeout` |
+| anything else | — | `unknown` |
+
+`assertion` and `validation` are part of the type for schema
+completeness but are **never produced today** — the engine has no
+assertion or validation step type yet, so there is no genuine signal
+that would justify either category. Adding one without a real signal
+would be fabrication, which this task explicitly avoids.
+
+**`httpStatus` is currently always `null`.** Playwright only returns a
+`Response` object from `page.goto()` when the navigation *doesn't*
+throw. A failing navigate (timeout or network error) throws before any
+`Response` exists, so there is no genuine HTTP status to report for a
+failure with the current engine design. The field is kept for schema
+completeness/future use rather than omitted, but it is never fabricated.
+
+**Redaction:** `action` only ever exposes `url` (navigate) or `selector`
+(click/fill) — a `fill` step's `value` is never included anywhere in
+`evidence`, `steps[]`, or logs, since it may be a password or other
+sensitive input. This was verified with a real end-to-end test using a
+literal password-like value (see "Verification actually performed").
 
 ## Structure
 
@@ -68,15 +123,16 @@ execution-engine/
   package.json
   tsconfig.json
   src/
-    types.ts         — Step / StepResult / ExecutionResult / RunStepsOptions
+    types.ts         — Step / StepResult / ExecutionResult / FailureEvidence / RunStepsOptions
     validate.ts       — pure, synchronous step-shape validation (no browser)
-    runner.ts          — real Playwright execution (fail-fast, sequential)
+    runner.ts          — real Playwright execution (fail-fast, sequential, evidence collection)
     index.ts            — file-based CLI (Task 4, unchanged)
-    stdin-runner.ts      — JSON stdin/stdout entry point (Task 6, new)
+    stdin-runner.ts      — JSON stdin/stdout entry point (Task 6, unchanged)
   tests/
     validate.test.ts     — unit tests for validation (no browser)
     runner.test.ts         — integration tests: real local HTTP server +
-                             real headless Chromium (no external network)
+                             real headless Chromium (no external network),
+                             including Execution Evidence Foundation tests
     stdin-runner.test.ts    — spawns the real stdin-runner subprocess and
                               exercises the exact protocol the backend uses
 ```
@@ -143,6 +199,19 @@ Using that (symlinked in temporarily, then removed before packaging —
   `pytest`) could not be installed in this sandbox (no network) to run
   `pytest` directly — see the Backend README/Task 6 report for that
   limitation.
+- **Task 8 stable-ID + Execution Evidence Foundation:** re-ran the full
+  suite after these additions → **39/39 tests passed**, including 9 new
+  evidence-specific tests exercising: `evidence === null` on success,
+  `network` category on a real unreachable host, `navigation` category
+  on a genuine navigation timeout (a real TCP server that accepts but
+  never responds), `selector` category on both a missing-selector
+  timeout and an invalid CSS selector syntax error, `failedStepId`/
+  `failedStepIndex` consistency with the top-level fields, backward
+  compatibility for id-less steps, and — critically — a real test that
+  fills a literal password-like string into a missing selector and
+  asserts it never appears anywhere in the serialized result. The same
+  stdlib-only Python harness was re-run to confirm the redaction and
+  evidence shape survive the real subprocess boundary end-to-end.
 
 **What could not be verified in the sandbox:** a clean `npm install` /
 `npx playwright install`. Anyone running this for real should follow the

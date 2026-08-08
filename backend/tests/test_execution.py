@@ -50,11 +50,12 @@ def _passing_result() -> ExecutionResultOut:
             "startedAt": "2026-01-01T00:00:00.000Z",
             "finishedAt": "2026-01-01T00:00:00.100Z",
             "durationMs": 100,
+            "evidence": None,
         }
     )
 
 
-def _failing_result(failed_step_id=None) -> ExecutionResultOut:
+def _failing_result(failed_step_id=None, error_category="selector") -> ExecutionResultOut:
     return ExecutionResultOut.model_validate(
         {
             "status": "failed",
@@ -76,6 +77,18 @@ def _failing_result(failed_step_id=None) -> ExecutionResultOut:
             "startedAt": "2026-01-01T00:00:00.000Z",
             "finishedAt": "2026-01-01T00:00:05.050Z",
             "durationMs": 5050,
+            "evidence": {
+                "failedStepId": failed_step_id,
+                "failedStepIndex": 1,
+                "stepType": "click",
+                "action": {"selector": "#submit"},
+                "errorMessage": "page.click: Timeout 5000ms exceeded.",
+                "errorCategory": error_category,
+                "pageUrl": "https://example.com/",
+                "httpStatus": None,
+                "executedStepCount": 2,
+                "stepDurationMs": 5000,
+            },
         }
     )
 
@@ -228,3 +241,86 @@ def test_create_test_definition_without_id_does_not_store_null_id(client):
     # backward compatibility: old-shape content has no "id" key at all,
     # not an explicit null
     assert "id" not in response.json()["content"][0]
+
+
+# --- Execution Evidence Foundation ---
+
+def test_execute_success_has_null_evidence(client):
+    project_id = _create_project(client)
+    test_id = _create_test_definition(client, project_id)
+
+    with patch("app.api.routes.test_definitions.execute_steps", return_value=_passing_result()):
+        response = client.post(f"/tests/{test_id}/execute")
+
+    assert response.status_code == 200
+    assert response.json()["evidence"] is None
+
+
+def test_execute_failure_returns_structured_evidence(client):
+    project_id = _create_project(client)
+    test_id = _create_test_definition(client, project_id)
+
+    with patch(
+        "app.api.routes.test_definitions.execute_steps",
+        return_value=_failing_result(failed_step_id="gen-click-abc", error_category="selector"),
+    ):
+        response = client.post(f"/tests/{test_id}/execute")
+
+    assert response.status_code == 200
+    evidence = response.json()["evidence"]
+    assert evidence is not None
+    assert evidence["failedStepId"] == "gen-click-abc"
+    assert evidence["failedStepIndex"] == 1
+    assert evidence["stepType"] == "click"
+    assert evidence["errorCategory"] == "selector"
+    assert evidence["action"] == {"selector": "#submit"}
+    assert evidence["httpStatus"] is None
+
+
+def test_execute_failure_evidence_matches_top_level_failed_step_fields(client):
+    project_id = _create_project(client)
+    test_id = _create_test_definition(client, project_id)
+
+    with patch(
+        "app.api.routes.test_definitions.execute_steps",
+        return_value=_failing_result(failed_step_id="gen-click-abc"),
+    ):
+        response = client.post(f"/tests/{test_id}/execute")
+
+    body = response.json()
+    assert body["evidence"]["failedStepId"] == body["failedStepId"]
+    assert body["evidence"]["failedStepIndex"] == body["failedStepIndex"]
+
+
+def test_execute_failure_without_id_has_null_evidence_failed_step_id(client):
+    project_id = _create_project(client)
+    test_id = _create_test_definition(client, project_id)
+
+    with patch(
+        "app.api.routes.test_definitions.execute_steps",
+        return_value=_failing_result(failed_step_id=None),
+    ):
+        response = client.post(f"/tests/{test_id}/execute")
+
+    evidence = response.json()["evidence"]
+    assert evidence["failedStepId"] is None
+
+
+def test_execute_evidence_never_contains_fill_value(client):
+    """
+    The evidence action summary must never carry a raw fill value —
+    only "selector"/"url" fields exist on FailureEvidenceActionOut, so
+    there is no field for a fill value to leak through even if the
+    engine's stub result tried to include one.
+    """
+    project_id = _create_project(client)
+    test_id = _create_test_definition(client, project_id)
+
+    result = _failing_result(failed_step_id="gen-fill-1", error_category="selector")
+
+    with patch("app.api.routes.test_definitions.execute_steps", return_value=result):
+        response = client.post(f"/tests/{test_id}/execute")
+
+    body_text = response.text
+    assert "value" not in response.json()["evidence"]["action"]
+    assert "super-secret" not in body_text

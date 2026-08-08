@@ -12,11 +12,27 @@
  */
 
 import { chromium, type Browser, type Page } from "playwright";
-import type { ExecutionResult, RunStepsOptions, Step, StepResult, StepStatus } from "./types.js";
+import type {
+  ErrorCategory,
+  ExecutionResult,
+  FailureEvidence,
+  FailureEvidenceAction,
+  RunStepsOptions,
+  Step,
+  StepResult,
+  StepStatus,
+} from "./types.js";
 
 const DEFAULT_STEP_TIMEOUT_MS = 5000;
 
-async function runSingleStep(page: Page, step: Step, baseUrl?: string): Promise<{ status: StepStatus; error?: string }> {
+interface StepOutcome {
+  status: StepStatus;
+  error?: string;
+  /** err.name from the caught error, e.g. "TimeoutError" — used for deterministic categorization. */
+  errorName?: string;
+}
+
+async function runSingleStep(page: Page, step: Step, baseUrl?: string): Promise<StepOutcome> {
   try {
     switch (step.type) {
       case "navigate": {
@@ -35,8 +51,52 @@ async function runSingleStep(page: Page, step: Step, baseUrl?: string): Promise<
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { status: "failed", error: message };
+    const name = err instanceof Error ? err.name : undefined;
+    return { status: "failed", error: message, errorName: name };
   }
+}
+
+/**
+ * Safe, redacted summary of a step's input for evidence purposes.
+ * Deliberately never includes FillStep's `value` (may be a password or
+ * other sensitive form input) — only structural information (selector,
+ * url) that isn't itself a secret.
+ */
+function buildActionSummary(step: Step): FailureEvidenceAction {
+  switch (step.type) {
+    case "navigate":
+      return { url: step.url };
+    case "click":
+    case "fill":
+      return { selector: step.selector };
+  }
+}
+
+/**
+ * Deterministic error categorization based on empirically-observed
+ * Playwright error shapes (see execution-engine/README.md for the
+ * exact message samples this was derived from). Only classifies when
+ * the evidence genuinely supports it — falls back to "unknown" rather
+ * than guessing.
+ *
+ * Never returns "assertion" or "validation": the current engine has no
+ * assertion/validation step type, so there is no real signal that
+ * would justify either category today.
+ */
+function categorizeError(stepType: Step["type"], errorName: string | undefined, message: string): ErrorCategory {
+  const isTimeout = errorName === "TimeoutError" || /Timeout \d+ms exceeded/.test(message);
+
+  if (stepType === "navigate") {
+    if (/net::ERR_/.test(message)) return "network";
+    if (isTimeout) return "navigation";
+    return "unknown";
+  }
+
+  // click / fill
+  if (/waiting for locator\(/.test(message) && isTimeout) return "selector";
+  if (/parsing css selector|Unexpected token/i.test(message)) return "selector";
+  if (isTimeout) return "timeout";
+  return "unknown";
 }
 
 /**
@@ -66,6 +126,7 @@ export async function runSteps(
   let failedStepIndex: number | null = null;
   let failedStepId: string | null = null;
   let error: string | null = null;
+  let evidence: FailureEvidence | null = null;
 
   let browser: Browser | undefined;
   try {
@@ -93,6 +154,32 @@ export async function runSteps(
         // Never fabricated: null when the failed step had no id.
         failedStepId = step.id ?? null;
         error = outcome.error ?? "Step failed with no error message";
+
+        // Best-effort, never fabricated: page.url() can itself fail to
+        // read in rare edge cases (e.g. context already tearing down).
+        let pageUrl: string | null = null;
+        try {
+          pageUrl = page.url();
+        } catch {
+          pageUrl = null;
+        }
+
+        evidence = {
+          failedStepId,
+          failedStepIndex: index,
+          stepType: step.type,
+          action: buildActionSummary(step),
+          errorMessage: outcome.error ?? "Step failed with no error message",
+          errorCategory: categorizeError(step.type, outcome.errorName, outcome.error ?? ""),
+          pageUrl,
+          // Never available on a genuine failure with the current engine
+          // (Playwright doesn't hand back a Response on a throwing
+          // goto) — kept for schema completeness, not fabricated.
+          httpStatus: null,
+          executedStepCount: stepResults.length,
+          stepDurationMs: durationMs,
+        };
+
         break; // fail-fast: deterministic single pass, no retries/healing
       }
     }
@@ -114,5 +201,6 @@ export async function runSteps(
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
+    evidence,
   };
 }

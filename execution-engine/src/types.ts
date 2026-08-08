@@ -53,6 +53,68 @@ export interface StepResult {
   error?: string;
 }
 
+/**
+ * Deterministic error category for a failed step, based on
+ * empirically-observed Playwright error shapes (see runner.ts's
+ * categorizeError()). Only ever set when the evidence genuinely
+ * supports it — never guessed.
+ *
+ * "assertion" and "validation" are included for schema completeness
+ * (a future step type might need them) but the current engine only
+ * ever produces navigate/click/fill actions, so it never emits these
+ * two today — see README.md.
+ */
+export type ErrorCategory =
+  | "assertion"
+  | "selector"
+  | "navigation"
+  | "timeout"
+  | "network"
+  | "validation"
+  | "unknown";
+
+/**
+ * Safe, redacted summary of the failed step's input. Deliberately
+ * excludes FillStep's `value` — it may be a password or other
+ * sensitive form input, so it is never included in evidence, on
+ * failure or otherwise.
+ */
+export interface FailureEvidenceAction {
+  /** Present for a failed "navigate" step. */
+  url?: string;
+  /** Present for a failed "click" or "fill" step. */
+  selector?: string;
+}
+
+/**
+ * Structured, deterministic evidence about a failed step, intended to
+ * give Claude 3's diagnosis layer enough to work with — WITHOUT Claude 2
+ * performing any classification of "application bug" vs "broken test"
+ * itself. Every field is either a fact directly observable from the
+ * Playwright execution, or null when that fact genuinely isn't
+ * available. Nothing here is fabricated.
+ */
+export interface FailureEvidence {
+  failedStepId: string | null;
+  failedStepIndex: number;
+  stepType: StepType;
+  action: FailureEvidenceAction;
+  errorMessage: string;
+  errorCategory: ErrorCategory;
+  /** page.url() at the moment of failure, if it could be read. */
+  pageUrl: string | null;
+  /**
+   * HTTP response status for the failed step, if genuinely available.
+   * With the current engine, a *failing* navigate never yields a
+   * Response object (Playwright throws before one exists on timeout or
+   * network error), so this is always null today — kept for schema
+   * completeness. Never fabricated.
+   */
+  httpStatus: number | null;
+  executedStepCount: number;
+  stepDurationMs: number;
+}
+
 export type ExecutionStatus = "passed" | "failed";
 
 /**
@@ -73,6 +135,13 @@ export type ExecutionStatus = "passed" | "failed";
  * earlier tasks' shape was removed, so existing callers/tests are
  * unaffected.
  *
+ * Added in this task (Execution Evidence Foundation): `evidence`
+ * (FailureEvidence | null) — additive. Null on a passing run. On a
+ * failing run, a structured, non-fabricated description of what
+ * happened, for Claude 3's diagnosis layer to consume. This is NOT a
+ * diagnosis: no bug/broken-test/environment classification happens
+ * here, only deterministic facts (see FailureEvidence).
+ *
  * This is NOT a diagnosis contract: no bug/broken-test classification
  * happens here. `error` is the raw failure message from the failing
  * step, nothing more.
@@ -87,6 +156,7 @@ export interface ExecutionResult {
   startedAt: string;
   finishedAt: string;
   durationMs: number;
+  evidence: FailureEvidence | null;
 }
 
 export interface RunStepsOptions {

@@ -32,9 +32,17 @@ Two entry points are provided:
    invoke the pipeline twice (and risk the two results drifting apart)
    to get both views of the same generation pass.
 
+5. diagnose_execution(generated_test_or_integration_result, execution_result)
+   (Task 10) Accepts either a LocalGeneratedTest or an
+   IntegrationReadyResult (unwrapped automatically) plus Claude 2's
+   real ExecutionResult, and returns a FailureDiagnosisResult.
+   Composes the existing, unmodified diagnosis.diagnose_execution_result()
+   -- no new correlation or classification logic lives in pipeline.py
+   itself.
+
 None of these entry points adds new classification or generation
 logic -- they are pure composition/translation on top of the
-already-tested Task 3/4/7/8 engines.
+already-tested Task 3/4/7/8/10 engines.
 
 Redaction handling: if the Recorder has already redacted a sensitive
 input value (value=None, redacted=True in the real contract), this
@@ -45,6 +53,8 @@ Intelligence never sees or handles raw passwords; that responsibility
 belongs to the Recorder.
 """
 
+from typing import Union
+
 from .journey_understanding import understand_journey
 from .journey_understanding.local_fixtures import LocalRawJourney
 from .journey_understanding.recorder_adapter import RealRecordedEvent, adapt_real_journey
@@ -52,6 +62,8 @@ from .test_generation import generate_test
 from .test_generation.generated_test import LocalGeneratedTest
 from .test_generation.execution_payload import to_execution_test_payload
 from .test_generation.integration_ready import IntegrationReadyResult, build_integration_ready_result
+from .diagnosis.execution_result import ExecutionResult
+from .diagnosis.failure_diagnosis import FailureDiagnosisResult, diagnose_execution_result
 
 
 def generate_test_from_recorded_events(raw_journey: LocalRawJourney) -> LocalGeneratedTest:
@@ -127,3 +139,24 @@ def prepare_integration_ready_test_from_real_recorder_events(
     """
     generated = generate_test_from_real_recorder_events(journey_id, events)
     return build_integration_ready_result(generated)
+
+
+def diagnose_execution(
+    generated_test_or_integration_result: Union[LocalGeneratedTest, IntegrationReadyResult],
+    execution_result: ExecutionResult,
+) -> FailureDiagnosisResult:
+    """
+    (Task 10) Diagnosis entry point for the real pipeline. Accepts
+    either a LocalGeneratedTest directly, or an IntegrationReadyResult
+    (its .generated_test is unwrapped automatically), plus Claude 2's
+    real ExecutionResult, and returns a FailureDiagnosisResult.
+
+    This is a thin composition over diagnosis.diagnose_execution_result()
+    -- no correlation or classification logic is duplicated here.
+    """
+    if isinstance(generated_test_or_integration_result, IntegrationReadyResult):
+        generated_test = generated_test_or_integration_result.generated_test
+    else:
+        generated_test = generated_test_or_integration_result
+
+    return diagnose_execution_result(generated_test, execution_result)

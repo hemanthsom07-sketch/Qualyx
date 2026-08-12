@@ -43,5 +43,37 @@ class Settings(BaseSettings):
     # internal timeout.
     execution_engine_timeout_seconds: int = 30
 
+    # --- Intelligence boundary ---
+    # Path to the intelligence/ directory. If unset, derived from the
+    # repository layout (backend/ and intelligence/ are sibling
+    # directories under the repo root), mirroring execution_engine_dir's
+    # convention above. Unlike the Execution Engine (TypeScript, reached
+    # via a subprocess/JSON boundary), Intelligence is also plain Python
+    # — but there is no installable package connecting the two (no
+    # pyproject.toml/setup.py in intelligence/, and adding one is out of
+    # scope: that would mean modifying Intelligence). See
+    # app/services/intelligence_client.py for how this path is used to
+    # make the `intelligence` package importable from within backend/.
+    intelligence_dir: str | None = None
+
+    # --- CORS ---
+    # Explicit allow-list of local development origins (Dashboard's Vite
+    # dev server, common alternate dev ports), rather than
+    # allow_origins=["*"]. This API has no authentication yet, so a
+    # wildcard would let any site a user's browser happens to visit call
+    # it. Override via CORS_ALLOWED_ORIGINS for other local setups.
+    #
+    # Note: this does not necessarily cover the Recorder (a Chrome
+    # extension) — extension-originated requests may or may not be
+    # subject to CORS at all depending on the extension's manifest
+    # permissions, which this repo's Backend has no visibility into. See
+    # the Day 1 report's "concerns for Recorder integration" section.
+    cors_allowed_origins: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+
 
 settings = Settings()

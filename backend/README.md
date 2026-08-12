@@ -49,6 +49,51 @@ uvicorn app.main:app --reload
 - Get test definition: `GET http://localhost:8000/tests/{test_id}`
 - List test definitions for a project: `GET http://localhost:8000/projects/{project_id}/tests`
 - Execute a test definition: `POST http://localhost:8000/tests/{test_id}/execute`
+- Ingest raw Recorder events: `POST http://localhost:8000/projects/{project_id}/recordings`
+
+### Ingesting raw Recorder events
+
+`POST /projects/{project_id}/recordings` accepts Recorder's actual
+`RecordedEvent` contract verbatim:
+
+```json
+{
+  "journeyId": "string",
+  "events": [
+    {
+      "id": "string",
+      "type": "page_load | click | input_change",
+      "timestamp": 0,
+      "pageUrl": "string",
+      "targetTag": "optional string",
+      "elementId": "optional string",
+      "elementText": "optional string",
+      "value": "optional string",
+      "redacted": "optional boolean"
+    }
+  ]
+}
+```
+
+It runs these events through Intelligence's existing
+`generate_execution_payload_from_real_recorder_events()` pipeline (see
+`app/services/intelligence_client.py`) and stores the result as a
+TestDefinition — `journeyId` becomes the name, generated steps become
+`content` — reusing the exact same validation/storage path as
+`POST /projects/{project_id}/tests/from-execution-payload`.
+
+Backend and Intelligence are both plain Python but live as sibling
+packages with no installable packaging connecting them. This endpoint
+requires the `intelligence/` package to be a sibling directory of
+`backend/` (default) or reachable via `INTELLIGENCE_DIR` — see
+`app/services/intelligence_client.py` for exactly how that's resolved.
+
+Responses:
+- `201` — recording ingested, TestDefinition created
+- `404` — no such project
+- `422` — malformed event data, empty events list, or Intelligence
+  genuinely produced zero usable steps from the given events
+- `502` — Intelligence's pipeline itself failed while processing
 
 ### Executing a test definition
 
@@ -97,3 +142,19 @@ On startup, if `DB_AUTO_CREATE=true`, the app will create tables
 directly from the ORM models (convenience only — not a substitute for
 real migrations, which should be introduced via Alembic in a later
 milestone).
+
+## CORS
+
+The app allows an explicit list of local development origins (see
+`app/config.py`'s `cors_allowed_origins`, default: Vite's dev server on
+`5173` and a common alternate `3000`, on both `localhost` and
+`127.0.0.1`) rather than a wildcard `allow_origins=["*"]`, since this API
+has no authentication yet. Override via `CORS_ALLOWED_ORIGINS` if your
+Dashboard runs on a different local port.
+
+This does not necessarily cover the Recorder (a Chrome extension) —
+extension-originated requests may or may not be subject to CORS at all,
+depending on the extension's manifest permissions, which this repo's
+Backend has no visibility into. If Recorder requests are blocked in
+practice, its specific `chrome-extension://<id>` origin would need to
+be added explicitly.

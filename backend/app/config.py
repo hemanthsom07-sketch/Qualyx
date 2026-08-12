@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     # point. Defaults to `npx tsx`, matching the engine's existing tsx-based
     # scripts (package.json). Overridable for environments that prefer a
     # compiled `node dist/stdin-runner.js` instead.
-    execution_engine_command: list[str] = ["npx", "tsx"]
+    execution_engine_command: list[str] = ["npx.cmd", "tsx"]
 
     # Overall subprocess timeout (seconds). This bounds the whole run
     # (all steps), separate from the execution engine's own 5s-per-step

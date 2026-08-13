@@ -24,6 +24,7 @@ from intelligence.diagnosis import (
     ENVIRONMENT_OR_EXECUTION,
     UNCERTAIN,
 )
+from intelligence.diagnosis.execution_result import FailureEvidence
 from intelligence.diagnosis.failure_diagnosis import diagnose_execution_result
 
 
@@ -272,6 +273,61 @@ def test_failed_step_index_alone_never_becomes_correlation_key():
     # The index is preserved as supplementary evidence only.
     assert diagnosis.failed_step_index == 1
     assert any("failedStepIndex" in e for e in diagnosis.evidence)
+
+
+def test_error_category_is_surfaced_as_evidence_but_does_not_change_classification():
+    """
+    Confirmed Backend contract: errorCategory lives inside
+    evidence.errorCategory (a FailureEvidence object), not at the
+    top level. It must be surfaced (verbatim, for a human reader) but
+    must NOT be used to drive classification, since its enum/semantics
+    have not been shared with Intelligence.
+    """
+    generated = _three_step_generated_test()
+    target_step = generated.steps[1]
+
+    # errorCategory present (nested under evidence), but the error text
+    # itself is generic/unrecognized.
+    execution_result = ExecutionResult(
+        status=STATUS_FAILED,
+        failedStepIndex=1,
+        failedStepId=target_step.step_id,
+        error="Something unexpected happened",
+        evidence=FailureEvidence(
+            errorCategory="SOME_UNDOCUMENTED_CATEGORY"
+        ),
+        executedStepCount=1,
+    )
+
+    diagnosis = diagnose_execution_result(generated, execution_result)
+
+    # Classification is unaffected by errorCategory -- still falls back
+    # to the unrecognized-error-text UNCERTAIN rule.
+    assert diagnosis.classification == UNCERTAIN
+    assert diagnosis.confidence < 0.3
+    # But the category is surfaced verbatim in evidence for transparency.
+    assert any("SOME_UNDOCUMENTED_CATEGORY" in e for e in diagnosis.evidence)
+
+
+def test_error_category_is_optional_and_backward_compatible():
+    """An ExecutionResult without errorCategory (older callers) must
+    still work exactly as before."""
+    generated = _three_step_generated_test()
+    target_step = generated.steps[1]
+
+    execution_result = ExecutionResult(
+        status=STATUS_FAILED,
+        failedStepIndex=1,
+        failedStepId=target_step.step_id,
+        error="503 Service Unavailable",
+        executedStepCount=1,
+        # errorCategory omitted entirely
+    )
+
+    diagnosis = diagnose_execution_result(generated, execution_result)
+
+    assert diagnosis.classification == APPLICATION_BUG
+    assert not any("errorCategory" in e for e in diagnosis.evidence)
 
 
 def test_diagnosis_is_deterministic_across_repeated_calls():

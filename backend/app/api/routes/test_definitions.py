@@ -4,8 +4,9 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.project import Project
 from app.models.test_definition import TestDefinition
-from app.schemas.execution import ExecutionResultOut
+from app.schemas.execution import DiagnosisOut, ExecutionResultOut
 from app.schemas.test_definition import ExecutionPayloadCreate, TestDefinitionCreate, TestDefinitionRead
+from app.services.diagnosis_client import diagnose
 from app.services.execution_client import (
     ExecutionEngineError,
     ExecutionValidationError,
@@ -119,15 +120,24 @@ def execute_test_definition(test_id: str, db: Session = Depends(get_db)) -> Exec
     Executes an existing TestDefinition's stored steps via the Execution
     Engine (subprocess boundary — see app/services/execution_client.py).
 
-    This endpoint does not diagnose or classify failures; it only reports
-    what the execution engine reported. Diagnosis/healing is Claude 3's
-    domain, added in a later milestone.
+    On a failed execution, additionally runs Intelligence's existing,
+    unmodified diagnosis (app/services/diagnosis_client.py) and attaches
+    it as the additive `diagnosis` field. A passing execution never
+    invokes diagnosis — `diagnosis` stays None. Backend performs no
+    classification itself; it only reports what the execution engine
+    and Intelligence's diagnosis each independently determined.
     """
     test_definition = _get_test_definition_or_404(test_id, db)
 
     try:
-        return execute_steps(test_definition.content)
+        result = execute_steps(test_definition.content)
     except ExecutionValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except ExecutionEngineError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    if result.status == "failed":
+        diagnosis_result = diagnose(test_definition, result)
+        result.diagnosis = DiagnosisOut.model_validate(diagnosis_result, from_attributes=True)
+
+    return result

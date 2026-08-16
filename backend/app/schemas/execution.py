@@ -97,3 +97,36 @@ class ExecutionResultOut(BaseModel):
     # non-fabricated description of the failure on a failing run, for
     # Claude 3's diagnosis layer to consume. Additive.
     evidence: FailureEvidenceOut | None = None
+    # Backend -> Intelligence diagnosis bridge: additive, always None on
+    # a passing run, and None on a failed run until/unless the diagnosis
+    # call is actually made (see app/services/diagnosis_client.py and
+    # the execute route). Every existing field above is unchanged in
+    # shape/meaning — this is purely additive.
+    diagnosis: "DiagnosisOut | None" = None
+
+
+class DiagnosisOut(BaseModel):
+    """
+    Mirrors Intelligence's real, confirmed FailureDiagnosisResult
+    dataclass (intelligence/diagnosis/failure_diagnosis.py) field for
+    field. This is a read-only view for the API response — Backend does
+    not compute, classify, or reinterpret any of these values itself.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    has_failure: bool = Field(alias="hasFailure")
+    classification: str | None = None
+    confidence: float = 0.0
+    correlation_established: bool = Field(alias="correlationEstablished")
+    failed_step_id: str | None = Field(alias="failedStepId")
+    failed_step_index: int | None = Field(alias="failedStepIndex")
+    error: str | None = None
+    generated_step_id: str | None = Field(alias="generatedStepId")
+    source_step_id: str | None = Field(alias="sourceStepId")
+    source_event_id: str | None = Field(alias="sourceEventId")
+    evidence: list[str] = Field(default_factory=list)
+    explanation: str = ""
+
+
+ExecutionResultOut.model_rebuild()

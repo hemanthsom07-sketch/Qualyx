@@ -4,9 +4,9 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.project import Project
 from app.models.test_definition import TestDefinition
-from app.schemas.execution import DiagnosisOut, ExecutionResultOut
+from app.schemas.diagnosis import DiagnosisOut, ExecutionResultWithDiagnosisOut, ExplanationOut
 from app.schemas.test_definition import ExecutionPayloadCreate, TestDefinitionCreate, TestDefinitionRead
-from app.services.diagnosis_client import diagnose
+from app.services.diagnosis_client import diagnose_and_explain
 from app.services.execution_client import (
     ExecutionEngineError,
     ExecutionValidationError,
@@ -114,18 +114,23 @@ def get_test_definition(test_id: str, db: Session = Depends(get_db)) -> TestDefi
     return _get_test_definition_or_404(test_id, db)
 
 
-@router.post("/tests/{test_id}/execute", response_model=ExecutionResultOut)
-def execute_test_definition(test_id: str, db: Session = Depends(get_db)) -> ExecutionResultOut:
+@router.post("/tests/{test_id}/execute", response_model=ExecutionResultWithDiagnosisOut)
+def execute_test_definition(test_id: str, db: Session = Depends(get_db)) -> ExecutionResultWithDiagnosisOut:
     """
     Executes an existing TestDefinition's stored steps via the Execution
-    Engine (subprocess boundary — see app/services/execution_client.py).
+    Engine (subprocess boundary — see app/services/execution_client.py),
+    then diagnoses and explains the result via Claude 3's Intelligence
+    module (in-process boundary — see app/services/diagnosis_client.py).
 
-    On a failed execution, additionally runs Intelligence's existing,
-    unmodified diagnosis (app/services/diagnosis_client.py) and attaches
-    it as the additive `diagnosis` field. A passing execution never
-    invokes diagnosis — `diagnosis` stays None. Backend performs no
-    classification itself; it only reports what the execution engine
-    and Intelligence's diagnosis each independently determined.
+    Milestone 2A: this endpoint now returns the execution result together
+    with `diagnosis` (a direct mirror of
+    intelligence.diagnosis.FailureDiagnosisResult) and `explanation` (a
+    direct mirror of intelligence.explainability.ExplainedDiagnosis).
+    This is an additive response-shape change: every field previously
+    returned here is unchanged; `diagnosis` and `explanation` are new
+    top-level fields. No diagnosis or explainability logic is duplicated
+    here — both are computed entirely by Intelligence's existing,
+    unmodified functions; this endpoint only translates and forwards.
     """
     test_definition = _get_test_definition_or_404(test_id, db)
 
@@ -136,8 +141,19 @@ def execute_test_definition(test_id: str, db: Session = Depends(get_db)) -> Exec
     except ExecutionEngineError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
-    if result.status == "failed":
-        diagnosis_result = diagnose(test_definition, result)
-        result.diagnosis = DiagnosisOut.model_validate(diagnosis_result, from_attributes=True)
+    diagnosis, explanation = diagnose_and_explain(test_definition.id, test_definition.content, result)
 
-    return result
+    return ExecutionResultWithDiagnosisOut(
+        status=result.status,
+        steps=result.steps,
+        failed_step_index=result.failed_step_index,
+        failed_step_id=result.failed_step_id,
+        error=result.error,
+        executed_step_count=result.executed_step_count,
+        started_at=result.started_at,
+        finished_at=result.finished_at,
+        duration_ms=result.duration_ms,
+        evidence=result.evidence,
+        diagnosis=DiagnosisOut.model_validate(diagnosis),
+        explanation=ExplanationOut.model_validate(explanation),
+    )

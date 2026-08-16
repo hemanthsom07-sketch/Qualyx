@@ -1,140 +1,152 @@
 """
-Backend <-> Intelligence Diagnosis boundary.
+Backend <-> Intelligence boundary (Milestone 2A).
 
-Extends the existing Backend <-> Intelligence import-path pattern
-established in app/services/intelligence_client.py (module-scoped
-sys.path insertion, guarded against duplicate insertion) rather than
-inventing a new integration mechanism — no HTTP service, no registry,
-no cache, no persistence.
+Unlike execution_client.py's subprocess boundary to the Execution Engine
+(a separate Node process), Intelligence is a pure, dependency-free Python
+package with no conflicting requirements, so this boundary is a direct
+in-process import rather than a subprocess call. No new process, no new
+serialization protocol -- just translation between Backend's existing
+Pydantic models and Intelligence's existing dataclasses.
 
-This module does exactly two things:
+This module contains NO diagnosis logic and NO explainability logic of
+its own. It only:
+  1. Makes the sibling `intelligence` package importable (see path setup
+     below -- mirrors execution_client.py's own pattern of resolving a
+     sibling directory under the repo root).
+  2. Translates ExecutionResultOut -> intelligence.diagnosis.ExecutionResult
+     (field-for-field, same names -- both mirror the same underlying
+     Execution Engine contract).
+  3. Translates a stored TestDefinition's `content` list into
+     intelligence.test_generation.LocalGeneratedTest, the shape
+     diagnose_execution_result() requires.
+  4. Calls the existing, unmodified diagnose_execution_result() and
+     explain_diagnosis() functions and returns their results as-is.
 
-1. Reconstructs the MINIMUM LocalGeneratedTest Intelligence's diagnosis
-   needs, from Backend's own TestDefinition.content (a bare JSON list
-   of step dicts — confirmed contract, see
-   app/models/test_definition.py). `source_step_id`/`source_event_id`
-   are always None: Backend genuinely does not have them (confirmed
-   architectural decision — they are intentionally not stored), and
-   they are never fabricated here.
+Provenance discipline (per Milestone 2A design decision):
+The stored TestDefinition.content (whether created via
+create_test_definition() or from-execution-payload) never contains
+source_step_id/source_event_id -- confirmed absent from both ingestion
+schemas. LocalGeneratedStep.source_step_id is declared as a required
+`str` in Intelligence's dataclass, but Python dataclasses do not enforce
+type hints at runtime, so this module deliberately passes None for both
+source_step_id and source_event_id rather than fabricating a value (e.g.
+reusing step_id as a stand-in). This correctly surfaces as `null` in the
+FailureDiagnosisResult/API response instead of a misleading fabricated
+value -- consistent with the explicit "never fabricate provenance"
+requirement. This is flagged here, not hidden, because it depends on a
+detail (unenforced dataclass typing) of Intelligence's implementation
+that Backend does not own.
 
-2. Converts Backend's real, confirmed ExecutionResultOut (Pydantic,
-   snake_case attributes with camelCase aliases) into Intelligence's
-   own ExecutionResult / StepExecutionResult dataclasses (camelCase
-   attributes, per the actual, confirmed current
-   intelligence/diagnosis/execution_result.py — which has no
-   FailureEvidence class and no nested `evidence` field; diagnosis
-   there is driven entirely by the single free-text `error` string plus
-   failedStepId/failedStepIndex), then calls Intelligence's existing,
-   unmodified diagnose_execution_result() — no diagnosis/classification
-   logic is duplicated or reimplemented here.
-
-Backend's own richer ExecutionResultOut.evidence (nested action/
-errorCategory/etc.) is untouched and still returned in full to API
-callers alongside the diagnosis — it is simply not part of what gets
-passed into Intelligence's diagnosis today, since Intelligence's real
-contract doesn't model it. Nothing here fabricates a field to fill that
-gap.
+Only content items that have a stored `id` are translated into a
+LocalGeneratedStep at all. Items without a stored id are skipped rather
+than assigned a synthetic id: such steps could never have been sent to
+the Execution Engine with an id either, so the engine could never echo
+a matching failedStepId back for them -- they are structurally
+uncorrelatable regardless, and giving them a synthetic local id would
+imply a provenance/identity that was never actually generated.
 """
 
-from app.models.test_definition import TestDefinition
-from app.schemas.execution import ExecutionResultOut
-from app.services.intelligence_client import _ensure_intelligence_importable
+import sys
+from pathlib import Path
 
-_ensure_intelligence_importable()
+# Intelligence is a sibling package under the repo root
+# (backend/ and intelligence/ are siblings), not a subpackage of
+# Backend's own `app`, so it is not on sys.path by default. This
+# mirrors execution_client.py's own _resolve_execution_engine_dir():
+# this file is backend/app/services/diagnosis_client.py, so
+# parents[2] resolves to backend/, and its parent is the repo root.
+_BACKEND_DIR = Path(__file__).resolve().parents[2]
+_REPO_ROOT = _BACKEND_DIR.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-# Imported only after the path adjustment above. Existing, unmodified
-# Intelligence entry points — confirmed field-for-field against the
-# actual current source of generated_test.py, execution_result.py, and
-# failure_diagnosis.py; nothing here re-implements their logic.
-from intelligence.test_generation.generated_test import LocalGeneratedStep, LocalGeneratedTest  # noqa: E402
-from intelligence.diagnosis.execution_result import (  # noqa: E402
-    ExecutionResult as IntelligenceExecutionResult,
-    StepExecutionResult as IntelligenceStepExecutionResult,
-)
-from intelligence.diagnosis.failure_diagnosis import (  # noqa: E402
+from intelligence.diagnosis import (  # noqa: E402
+    ExecutionResult as IntelExecutionResult,
+    StepExecutionResult as IntelStepExecutionResult,
     FailureDiagnosisResult,
     diagnose_execution_result,
 )
+from intelligence.explainability import explain_diagnosis, ExplainedDiagnosis  # noqa: E402
+from intelligence.test_generation.generated_test import (  # noqa: E402
+    LocalGeneratedStep,
+    LocalGeneratedTest,
+)
+
+from app.schemas.execution import ExecutionResultOut
 
 
-def build_local_generated_test(test_definition: TestDefinition) -> LocalGeneratedTest:
+def _to_intelligence_execution_result(result: ExecutionResultOut) -> IntelExecutionResult:
     """
-    Reconstructs the minimum LocalGeneratedTest Intelligence's diagnosis
-    needs from Backend's stored content.
-
-    Steps with no stored "id" are skipped entirely: LocalGeneratedStep
-    requires a step_id argument, and a step with no real stable id has
-    nothing genuine to correlate a failedStepId against anyway —
-    omitting it costs nothing (Intelligence's own
-    find_generated_step_by_id wouldn't match it either way), whereas
-    inventing a placeholder id would be fabrication.
+    Field-for-field translation. Both ExecutionResultOut (Backend) and
+    IntelExecutionResult (Intelligence) mirror the same real Execution
+    Engine contract (execution-engine/src/types.ts), so no values are
+    invented or reinterpreted here.
     """
-    steps: list[LocalGeneratedStep] = []
-    for raw_step in test_definition.content:
-        step_id = raw_step.get("id")
-        if not step_id:
-            continue
-        steps.append(
-            LocalGeneratedStep(
-                step_id=step_id,
-                kind=raw_step["type"],
-                # Confirmed architectural decision: Backend does not
-                # store provenance. Never fabricated — always None.
-                source_step_id=None,
-                source_event_id=None,
-                url=raw_step.get("url"),
-                selector=raw_step.get("selector"),
-                selector_kind=raw_step.get("selectorKind"),
-                value=raw_step.get("value"),
-            )
-        )
-    return LocalGeneratedTest(journey_id=test_definition.name, steps=steps)
-
-
-def to_intelligence_execution_result(result: ExecutionResultOut) -> IntelligenceExecutionResult:
-    """
-    Converts Backend's real ExecutionResultOut into Intelligence's
-    ExecutionResult/StepExecutionResult dataclasses, field for field.
-
-    Backend's own evidence object (nested action/errorCategory/pageUrl/
-    etc.) is intentionally not passed through here — Intelligence's real
-    ExecutionResult has no `evidence` field to receive it. This is not a
-    loss of information for API callers: the full ExecutionResultOut,
-    including evidence, is still returned as-is alongside the diagnosis
-    (see app/api/routes/test_definitions.py). Fields with no home on the
-    Intelligence side (e.g. per-step stepIndex/type/durationMs, which
-    IntelligenceStepExecutionResult intentionally doesn't model) are
-    likewise simply omitted here, not fabricated or lost from the real
-    response.
-    """
-    steps = [
-        IntelligenceStepExecutionResult(id=s.id, status=s.status, error=s.error) for s in result.steps
-    ]
-
-    return IntelligenceExecutionResult(
+    return IntelExecutionResult(
         status=result.status,
         failedStepIndex=result.failed_step_index,
         failedStepId=result.failed_step_id,
         error=result.error,
         executedStepCount=result.executed_step_count,
-        steps=steps,
+        steps=[
+            IntelStepExecutionResult(id=s.id, status=s.status, error=s.error)
+            for s in result.steps
+        ],
         startedAt=result.started_at,
         finishedAt=result.finished_at,
         durationMs=result.duration_ms,
     )
 
 
-def diagnose(test_definition: TestDefinition, execution_result: ExecutionResultOut) -> FailureDiagnosisResult:
+def _generated_test_from_stored_content(
+    test_definition_id: str, content: list[dict]
+) -> LocalGeneratedTest:
     """
-    Runs Intelligence's existing, unmodified diagnosis on a failed
-    execution result.
+    Builds the LocalGeneratedTest representation diagnose_execution_result()
+    requires, from a stored TestDefinition's `content`. See module
+    docstring for the provenance and id-skipping rules this follows.
 
-    Callers must only invoke this when execution_result.status ==
-    "failed" — a passing execution should never reach this function
-    (enforced at the call site in app/api/routes/test_definitions.py,
-    not re-checked here, to keep this function a pure, single-purpose
-    conversion+call).
+    `journey_id` uses the real, stored TestDefinition id -- not a
+    fabricated value -- since LocalGeneratedTest requires some
+    identifier and this field is never inspected by diagnosis logic
+    itself (only .steps is).
     """
-    generated_test = build_local_generated_test(test_definition)
-    intelligence_result = to_intelligence_execution_result(execution_result)
-    return diagnose_execution_result(generated_test, intelligence_result)
+    steps: list[LocalGeneratedStep] = []
+    for item in content:
+        step_id = item.get("id")
+        if not step_id:
+            # No stored id: this step could never have been correlated
+            # via failedStepId in the first place. Skip rather than
+            # fabricate an id for it.
+            continue
+        steps.append(
+            LocalGeneratedStep(
+                step_id=step_id,
+                kind=item.get("type"),
+                source_step_id=None,  # never fabricated -- see module docstring
+                source_event_id=None,  # never fabricated -- see module docstring
+                url=item.get("url"),
+                selector=item.get("selector"),
+                selector_kind=item.get("selectorKind"),
+                value=item.get("value"),
+            )
+        )
+    return LocalGeneratedTest(journey_id=test_definition_id, steps=steps)
+
+
+def diagnose_and_explain(
+    test_definition_id: str,
+    content: list[dict],
+    execution_result: ExecutionResultOut,
+) -> tuple[FailureDiagnosisResult, ExplainedDiagnosis]:
+    """
+    The single entry point the execution route calls. Composes the
+    existing, unmodified diagnose_execution_result() and
+    explain_diagnosis() -- no classification or presentation logic
+    lives in this module.
+    """
+    generated_test = _generated_test_from_stored_content(test_definition_id, content)
+    intel_execution_result = _to_intelligence_execution_result(execution_result)
+    diagnosis = diagnose_execution_result(generated_test, intel_execution_result)
+    explanation = explain_diagnosis(diagnosis)
+    return diagnosis, explanation

@@ -124,6 +124,7 @@ def adapt_real_event(event: RealRecordedEvent) -> LocalRawEvent:
         url=event.pageUrl,
         element=_adapt_element(event),
         input_value=event.value,
+        redacted=bool(event.redacted),
     )
 
 

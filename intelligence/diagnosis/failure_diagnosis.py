@@ -50,6 +50,18 @@ This is intentionally conservative: a single free-text error string is
 not sufficient to reliably claim an application bug, so classification
 never asserts confidence higher than what a plain, explainable string
 match justifies.
+
+errorCategory (confirmed contract update): Claude 2's contract places
+`errorCategory` inside `evidence.errorCategory` (a FailureEvidence
+object), not at the top level. It is surfaced in `evidence` (the
+diagnosis result's evidence list) verbatim, with a None-check since
+`execution_result.evidence` itself is optional, for a human reader's
+benefit -- but it is NOT used anywhere in the classification rules
+above. Using it to drive classification without knowing its value
+space would mean guessing at an undocumented contract, which these
+rules deliberately avoid. See this task's report for the exact
+follow-up needed from Claude 2 before errorCategory can become a
+primary signal.
 """
 
 import re
@@ -134,6 +146,12 @@ def _uncertain_uncorrelated_result(execution_result: ExecutionResult) -> Failure
             f"ExecutionResult.failedStepIndex was {execution_result.failedStepIndex}, "
             "but array position is not used as a substitute correlation key."
         )
+    if execution_result.evidence is not None and execution_result.evidence.errorCategory is not None:
+        evidence.append(
+            f"ExecutionResult.evidence.errorCategory reported by Claude 2: "
+            f"'{execution_result.evidence.errorCategory}' (not used to drive "
+            "classification -- its enum/semantics have not been shared)."
+        )
     if execution_result.error:
         evidence.append(f"Reported error: {execution_result.error}")
 
@@ -214,6 +232,12 @@ def diagnose_execution_result(
     error_text = execution_result.error or ""
     error_lower = error_text.lower()
 
+    if execution_result.evidence is not None and execution_result.evidence.errorCategory is not None:
+        evidence.append(
+            f"ExecutionResult.evidence.errorCategory reported by Claude 2: "
+            f"'{execution_result.evidence.errorCategory}' (not used to drive "
+            "classification -- its enum/semantics have not been shared)."
+        )
     if execution_result.error:
         evidence.append(f"Reported error: {execution_result.error}")
 

@@ -162,6 +162,61 @@ def test_generated_step_ordering_matches_normalized_journey_order_including_skip
     assert [u.source_step_id for u in generated.ungeneratable_steps] == ["s2"]
 
 
+def test_click_step_prefers_data_testid_but_preserves_element_id_as_evidence():
+    """
+    Phase 4 selector-evidence milestone (item 9 of the audit): when
+    both a data-testid and an element id are known, the existing
+    preference rule still chooses data-testid as the primary selector
+    (unchanged), but the non-chosen element_id must now survive on
+    LocalGeneratedStep as evidence, rather than being discarded.
+    """
+    journey = LocalNormalizedJourney(
+        journey_id="j1",
+        steps=[
+            LocalJourneyUnderstandingStep(
+                step_id="s1",
+                kind=STEP_CLICK,
+                source_event_id="e1",
+                element=LocalNormalizedElement(
+                    tag="button",
+                    element_id="checkout-button",
+                    data_testid="checkout-submit",
+                ),
+            ),
+        ],
+    )
+
+    generated = generate_test(journey)
+    step = generated.steps[0]
+
+    assert step.selector == '[data-testid="checkout-submit"]'
+    assert step.selector_kind == "data-testid"
+    assert step.element_id == "checkout-button"
+    assert step.data_testid == "checkout-submit"
+
+
+def test_click_step_with_only_id_has_no_fabricated_data_testid_evidence():
+    journey = LocalNormalizedJourney(
+        journey_id="j1",
+        steps=[
+            LocalJourneyUnderstandingStep(
+                step_id="s1",
+                kind=STEP_CLICK,
+                source_event_id="e1",
+                element=LocalNormalizedElement(tag="button", element_id="checkout-button"),
+            ),
+        ],
+    )
+
+    generated = generate_test(journey)
+    step = generated.steps[0]
+
+    assert step.selector == "#checkout-button"
+    assert step.selector_kind == "id"
+    assert step.element_id == "checkout-button"
+    assert step.data_testid is None
+
+
 if __name__ == "__main__":
     # Plain-Python runner so this suite works even without pytest installed.
     test_functions = [

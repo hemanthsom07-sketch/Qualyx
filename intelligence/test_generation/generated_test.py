@@ -38,6 +38,19 @@ class LocalGeneratedStep:
     recorder_adapter) so a generated step can be mapped straight back
     to the Recorder event that produced it, without requiring a
     separate lookup through the normalized journey step.
+
+    Phase 4 selector-evidence milestone: element_id/data_testid carry
+    the RAW stable identifiers that were genuinely known for this
+    step's element -- both, if both were genuinely present -- as
+    evidence alongside the already-chosen `selector`/`selector_kind`.
+    This is not a duplicate selector: `selector`/`selector_kind` remain
+    the single, existing-preference-rule-chosen value the Execution
+    Engine actually uses; `element_id`/`data_testid` exist purely so
+    Healing can later know the non-chosen identifier still genuinely
+    existed, instead of it being silently discarded. Never fabricated:
+    a field here is populated only when the corresponding raw
+    identifier was genuinely known for this element (see
+    test_generation/engine.py's _resolve_stable_selector()).
     """
     step_id: str
     kind: str  # GEN_STEP_NAVIGATE / GEN_STEP_CLICK / GEN_STEP_FILL
@@ -47,6 +60,8 @@ class LocalGeneratedStep:
     selector: Optional[str] = None
     selector_kind: Optional[str] = None  # "data-testid" / "id" (only stable kinds)
     value: Optional[str] = None  # only for GEN_STEP_FILL
+    element_id: Optional[str] = None  # raw HTML id, if genuinely known (selector evidence)
+    data_testid: Optional[str] = None  # raw data-testid, if genuinely known (selector evidence)
 
 
 @dataclass

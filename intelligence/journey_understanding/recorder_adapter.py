@@ -18,6 +18,8 @@ Real RecordedEvent contract (from recorder/src/lib/eventCapture.ts):
       pageUrl: string;
       targetTag?: string;
       elementId?: string;
+      elementHtmlId?: string;
+      elementDataTestId?: string;
       elementText?: string;
       value?: string;
       redacted?: boolean;
@@ -34,6 +36,20 @@ knows how to turn into Playwright selectors:
     "my-id"                    -> element_id="my-id"      -> "#my-id"
     "data-testid:my-test-id"   -> data_testid="my-test-id" -> '[data-testid="my-test-id"]'
     None                       -> neither set -> refused, never guessed
+
+Phase 4 selector-evidence milestone: Recorder's getStableIdentifier()
+collapses an element's `id`/`data-testid` into a single preferred
+value, permanently discarding the other when both genuinely exist.
+Recorder now ALSO sends `elementHtmlId`/`elementDataTestId` --
+independently captured, non-collapsed raw values (see
+getStableIdentifiers() in eventCapture.ts). When either of these new
+fields is present on the event, this adapter prefers them (unambiguous,
+no decoding needed, and able to represent both simultaneously). When
+neither new field is present -- an older Recorder payload sending only
+`elementId` -- this adapter falls back to decoding the legacy encoded
+string exactly as before, so existing payloads/tests remain valid and
+behave identically. Neither identifier is ever derived from the other;
+neither is fabricated when genuinely absent.
 
 Sensitive input handling:
     - Recorder sends value=None (undefined) and redacted=True for
@@ -73,6 +89,8 @@ class RealRecordedEvent:
     pageUrl: str
     targetTag: Optional[str] = None
     elementId: Optional[str] = None
+    elementHtmlId: Optional[str] = None
+    elementDataTestId: Optional[str] = None
     elementText: Optional[str] = None
     value: Optional[str] = None
     redacted: Optional[bool] = None
@@ -80,10 +98,12 @@ class RealRecordedEvent:
 
 def _decode_stable_identifier(element_id: Optional[str]):
     """
-    Decodes Recorder's getStableIdentifier() encoding into
+    Decodes Recorder's legacy getStableIdentifier() encoding into
     (element_id, data_testid). Never guesses: if elementId is missing,
     both are None and no selector will later be generated for this
-    element.
+    element. Only ever yields ONE of the two, by construction -- this
+    is the legacy, single-identifier fallback path; see
+    _resolve_identifiers() for the preferred, non-collapsing path.
     """
     if element_id is None:
         return None, None
@@ -92,13 +112,35 @@ def _decode_stable_identifier(element_id: Optional[str]):
     return element_id, None
 
 
+def _resolve_identifiers(event: RealRecordedEvent):
+    """
+    Resolves (element_id, data_testid) for an event, preferring the
+    new, independently-captured `elementHtmlId`/`elementDataTestId`
+    fields when either is present -- these can genuinely represent
+    both identifiers simultaneously, unlike the legacy `elementId`
+    encoding. Falls back to decoding the legacy single-string
+    `elementId` field when neither new field is present, for backward
+    compatibility with older Recorder payloads. Never derives one
+    identifier from the other; never fabricates either.
+    """
+    if event.elementHtmlId is not None or event.elementDataTestId is not None:
+        return event.elementHtmlId, event.elementDataTestId
+    return _decode_stable_identifier(event.elementId)
+
+
 def _adapt_element(event: RealRecordedEvent) -> Optional[LocalRawElementInfo]:
     # An "element" is only meaningful for click/input_change events with
     # some element-related data present.
-    if event.targetTag is None and event.elementId is None and event.elementText is None:
+    if (
+        event.targetTag is None
+        and event.elementId is None
+        and event.elementHtmlId is None
+        and event.elementDataTestId is None
+        and event.elementText is None
+    ):
         return None
 
-    resolved_element_id, resolved_data_testid = _decode_stable_identifier(event.elementId)
+    resolved_element_id, resolved_data_testid = _resolve_identifiers(event)
 
     return LocalRawElementInfo(
         tag=event.targetTag,

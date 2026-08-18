@@ -129,6 +129,13 @@ def _generated_test_from_stored_content(
                 selector=item.get("selector"),
                 selector_kind=item.get("selectorKind"),
                 value=item.get("value"),
+                # Phase 4 selector-evidence milestone: read back the raw
+                # secondary-identifier evidence stored alongside the
+                # primary selector, same pattern as selector_kind above.
+                # item.get() returns None for older stored content that
+                # predates this milestone -- never fabricated.
+                element_id=item.get("stableElementId"),
+                data_testid=item.get("stableDataTestId"),
             )
         )
     return LocalGeneratedTest(journey_id=test_definition_id, steps=steps)

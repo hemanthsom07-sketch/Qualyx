@@ -225,6 +225,48 @@ def test_generated_step_ids_do_not_depend_on_array_position():
     assert [s["id"] for s in payload_ba["steps"]] == ["gen-step-rec-evt-b", "gen-step-rec-evt-a"]
 
 
+def test_secondary_identifier_evidence_survives_execution_payload_serialization():
+    """
+    Phase 4 selector-evidence milestone (item 10 of the audit): when a
+    step has both a chosen selector and a genuine secondary identifier,
+    the secondary identifier must survive serialization into the
+    execution payload as `stableElementId`/`stableDataTestId` -- the
+    Execution Engine ignores these, but the payload must carry them so
+    Backend storage (and later, Healing reconstruction) can see them.
+    """
+    event = RealRecordedEvent(
+        id="rec-evt-1",
+        type="click",
+        timestamp=1000.0,
+        pageUrl="https://shop.test/",
+        targetTag="button",
+        elementHtmlId="checkout-button",
+        elementDataTestId="checkout-submit",
+    )
+
+    payload = generate_execution_payload_from_real_recorder_events("j1", [event])
+    step_payload = payload["steps"][0]
+
+    assert step_payload["selector"] == '[data-testid="checkout-submit"]'
+    assert step_payload["selectorKind"] == "data-testid"
+    assert step_payload["stableElementId"] == "checkout-button"
+    assert step_payload["stableDataTestId"] == "checkout-submit"
+
+
+def test_execution_payload_never_includes_evidence_keys_when_absent():
+    payload = generate_execution_payload_from_real_recorder_events("j1", _three_step_events())
+    for step_payload in payload["steps"]:
+        if step_payload["type"] == "navigate":
+            assert "stableElementId" not in step_payload
+            assert "stableDataTestId" not in step_payload
+    # rec-evt-2 (click) only ever had elementId="data-testid:nav-products"
+    # via the legacy encoding -- no elementHtmlId was ever sent, so
+    # stableElementId must not be fabricated.
+    click_step = payload["steps"][1]
+    assert "stableElementId" not in click_step
+    assert click_step["stableDataTestId"] == "nav-products"
+
+
 if __name__ == "__main__":
     test_functions = [
         (name, obj)

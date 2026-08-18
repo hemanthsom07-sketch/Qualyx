@@ -42,18 +42,32 @@ from .generated_test import (
 
 def _resolve_stable_selector(step: LocalJourneyUnderstandingStep):
     """
-    Returns (selector, selector_kind) if a stable selector is available,
-    otherwise (None, None). Only data-testid and element id are
-    considered stable for this milestone -- no CSS-selector guessing,
-    no text-based selector fabrication.
+    Returns (selector, selector_kind, element_id, data_testid).
+
+    selector/selector_kind: the PRIMARY selector, chosen via the
+    existing, UNCHANGED preference rule (data-testid over element id;
+    neither available -> (None, None), never guessed).
+
+    element_id/data_testid (Phase 4 selector-evidence milestone): the
+    raw identifiers genuinely known for this element -- independent of
+    which one was chosen as primary. Previously, whichever identifier
+    was NOT selected as the primary selector was silently discarded
+    here; it is now preserved as evidence on LocalGeneratedStep so
+    Healing can consider it later. Never derived from one another,
+    never fabricated -- these are exactly step.element.element_id /
+    step.element.data_testid, verbatim.
     """
     if step.element is None:
-        return None, None
-    if step.element.data_testid:
-        return f'[data-testid="{step.element.data_testid}"]', "data-testid"
-    if step.element.element_id:
-        return f"#{step.element.element_id}", "id"
-    return None, None
+        return None, None, None, None
+
+    element_id = step.element.element_id
+    data_testid = step.element.data_testid
+
+    if data_testid:
+        return f'[data-testid="{data_testid}"]', "data-testid", element_id, data_testid
+    if element_id:
+        return f"#{element_id}", "id", element_id, data_testid
+    return None, None, element_id, data_testid
 
 
 def generate_test(normalized_journey: LocalNormalizedJourney) -> LocalGeneratedTest:
@@ -86,7 +100,7 @@ def generate_test(normalized_journey: LocalNormalizedJourney) -> LocalGeneratedT
             )
 
         elif step.kind == STEP_CLICK:
-            selector, selector_kind = _resolve_stable_selector(step)
+            selector, selector_kind, element_id, data_testid = _resolve_stable_selector(step)
             if selector is None:
                 ungeneratable_steps.append(
                     LocalUngeneratableStep(
@@ -107,11 +121,13 @@ def generate_test(normalized_journey: LocalNormalizedJourney) -> LocalGeneratedT
                     source_event_id=step.source_event_id,
                     selector=selector,
                     selector_kind=selector_kind,
+                    element_id=element_id,
+                    data_testid=data_testid,
                 )
             )
 
         elif step.kind == STEP_FILL:
-            selector, selector_kind = _resolve_stable_selector(step)
+            selector, selector_kind, element_id, data_testid = _resolve_stable_selector(step)
             if selector is None:
                 ungeneratable_steps.append(
                     LocalUngeneratableStep(
@@ -154,6 +170,8 @@ def generate_test(normalized_journey: LocalNormalizedJourney) -> LocalGeneratedT
                     selector=selector,
                     selector_kind=selector_kind,
                     value=step.value,
+                    element_id=element_id,
+                    data_testid=data_testid,
                 )
             )
 

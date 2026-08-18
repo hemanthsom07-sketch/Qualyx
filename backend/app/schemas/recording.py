@@ -12,6 +12,8 @@ this mirrors Recorder's actual RecordedEvent wire contract exactly:
       pageUrl: string;
       targetTag?: string;
       elementId?: string;
+      elementHtmlId?: string;
+      elementDataTestId?: string;
       elementText?: string;
       value?: string;
       redacted?: boolean;
@@ -22,6 +24,15 @@ This is the same shape as Intelligence's RealRecordedEvent dataclass
 inspection). No renaming or translation happens at this boundary on
 purpose — see app/services/intelligence_client.py, which constructs a
 RealRecordedEvent directly from this schema's field names.
+
+Phase 4 selector-evidence milestone: `elementHtmlId`/`elementDataTestId`
+are additive, backward-compatible fields, both optional and both
+defaulting to None. `elementId` is completely unchanged (existing
+payloads using only `elementId`, in either its plain-id or
+"data-testid:..."-prefixed form, remain valid and behave exactly as
+before). The new fields exist only to stop discarding whichever
+identifier `elementId`'s own preference collapse doesn't select, when
+an element genuinely has both a real `id` and a real `data-testid`.
 """
 
 from typing import Literal
@@ -36,6 +47,8 @@ class RecordedEventCreate(BaseModel):
     pageUrl: str = Field(min_length=1)
     targetTag: str | None = None
     elementId: str | None = None
+    elementHtmlId: str | None = None
+    elementDataTestId: str | None = None
     elementText: str | None = None
     value: str | None = None
     redacted: bool | None = None

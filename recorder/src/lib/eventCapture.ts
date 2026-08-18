@@ -16,6 +16,14 @@ export interface RecordedEvent {
   pageUrl: string;
   targetTag?: string;
   elementId?: string;
+  // Phase 4 selector-evidence preservation: independently-captured raw
+  // identifiers, additive to `elementId` above. `elementId` is left
+  // completely unchanged (still the single, preference-collapsed
+  // encoding existing consumers rely on) for backward compatibility --
+  // these two new fields exist purely to stop discarding the
+  // non-preferred identifier when an element genuinely has both.
+  elementHtmlId?: string;
+  elementDataTestId?: string;
   elementText?: string;
   value?: string;
   redacted?: boolean;
@@ -26,6 +34,12 @@ const MAX_TEXT_LENGTH = 120;
 /**
  * Prefers a real `id` attribute, falls back to `data-testid`.
  * Returns undefined if neither stable identifier is present.
+ *
+ * UNCHANGED (Phase 4 selector-evidence milestone): this function and
+ * the `elementId` field it populates keep their exact existing
+ * behavior/encoding for backward compatibility. See
+ * getStableIdentifiers() below for the additive, non-collapsing
+ * capture used for the two new evidence fields.
  */
 export function getStableIdentifier(el: Element): string | undefined {
   const id = el.getAttribute("id");
@@ -35,6 +49,21 @@ export function getStableIdentifier(el: Element): string | undefined {
   if (testId) return `data-testid:${testId}`;
 
   return undefined;
+}
+
+/**
+ * Independently captures BOTH stable identifiers, when genuinely
+ * present on the element -- unlike getStableIdentifier(), this never
+ * short-circuits, so an element with both a real `id` and a real
+ * `data-testid` yields both values instead of only the preferred one.
+ * Neither value is derived from the other; a value is included only
+ * when the corresponding attribute is genuinely present on the
+ * element -- never fabricated.
+ */
+export function getStableIdentifiers(el: Element): { htmlId?: string; dataTestId?: string } {
+  const htmlId = el.getAttribute("id") || undefined;
+  const dataTestId = el.getAttribute("data-testid") || undefined;
+  return { htmlId, dataTestId };
 }
 
 export function getElementText(el: Element): string | undefined {
@@ -80,6 +109,7 @@ export function buildPageLoadEvent(pageUrl: string): RecordedEvent {
 }
 
 export function buildClickEvent(el: Element, pageUrl: string): RecordedEvent {
+  const { htmlId, dataTestId } = getStableIdentifiers(el);
   return {
     id: makeId(),
     type: "click",
@@ -87,6 +117,8 @@ export function buildClickEvent(el: Element, pageUrl: string): RecordedEvent {
     pageUrl,
     targetTag: el.tagName.toLowerCase(),
     elementId: getStableIdentifier(el),
+    elementHtmlId: htmlId,
+    elementDataTestId: dataTestId,
     elementText: getElementText(el)
   };
 }
@@ -94,6 +126,7 @@ export function buildClickEvent(el: Element, pageUrl: string): RecordedEvent {
 export function buildInputChangeEvent(el: Element, pageUrl: string): RecordedEvent {
   const sensitive = isSensitiveInput(el);
   const rawValue = (el as HTMLInputElement).value;
+  const { htmlId, dataTestId } = getStableIdentifiers(el);
 
   return {
     id: makeId(),
@@ -102,6 +135,8 @@ export function buildInputChangeEvent(el: Element, pageUrl: string): RecordedEve
     pageUrl,
     targetTag: el.tagName.toLowerCase(),
     elementId: getStableIdentifier(el),
+    elementHtmlId: htmlId,
+    elementDataTestId: dataTestId,
     value: sensitive ? undefined : rawValue,
     redacted: sensitive || undefined
   };

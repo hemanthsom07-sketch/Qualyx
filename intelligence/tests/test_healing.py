@@ -48,13 +48,18 @@ def _navigate_step(step_id="gen-nav-1"):
     )
 
 
-def _click_step(step_id="gen-click-1", selector="#checkout-submit", selector_kind="id"):
+def _click_step(
+    step_id="gen-click-1", selector="#checkout-submit", selector_kind="id",
+    element_id=None, data_testid=None,
+):
     return LocalGeneratedStep(
         step_id=step_id,
         kind="click",
         source_step_id=None,
         selector=selector,
         selector_kind=selector_kind,
+        element_id=element_id,
+        data_testid=data_testid,
     )
 
 
@@ -239,20 +244,55 @@ def test_unrecognized_failed_selector_kind_yields_no_candidate():
     assert result.has_candidate is False
 
 
-def test_real_generated_step_never_yields_a_candidate_today():
+def test_generated_step_with_no_secondary_evidence_yields_no_candidate():
     """
-    Honesty check on the real-world integration point: a
-    LocalGeneratedStep produced by today's actual Recorder/Intelligence
-    pipeline only ever carries ONE identifier (see engine.py's module
-    docstring for why), so generate_candidate_for_step() must
-    deterministically report no candidate for it -- this is the correct
-    answer given real evidence, not a missing feature.
+    A step whose element_id/data_testid evidence fields are unset (the
+    common case: an element only ever had one of the two attributes,
+    or this step was generated before the Phase 4 selector-evidence
+    milestone) must still honestly report no candidate -- this remains
+    the correct answer when only one identifier was ever genuinely
+    known, not a missing feature.
     """
     step = _click_step(selector="#checkout-submit", selector_kind="id")
+    assert step.element_id is None
+    assert step.data_testid is None
 
     result = generate_candidate_for_step(step)
 
     assert result.has_candidate is False
+
+
+def test_generated_step_with_genuine_secondary_evidence_yields_real_candidate():
+    """
+    Phase 4 selector-evidence milestone: a LocalGeneratedStep whose
+    element genuinely had both a real id and a real data-testid (now
+    preserved end-to-end from Recorder through storage) must produce a
+    genuine, evidence-backed candidate -- this is the real behavior
+    change this milestone delivers, not a hypothetical.
+    """
+    step = _click_step(
+        selector="#checkout-button", selector_kind="id",
+        element_id="checkout-button", data_testid="checkout-submit",
+    )
+
+    result = generate_candidate_for_step(step)
+
+    assert result.has_candidate is True
+    assert result.proposed_selector == '[data-testid="checkout-submit"]'
+    assert result.proposed_selector_kind == SELECTOR_KIND_DATA_TESTID
+
+
+def test_generated_step_with_data_testid_primary_and_id_evidence_yields_candidate():
+    step = _click_step(
+        selector='[data-testid="checkout-submit"]', selector_kind="data-testid",
+        element_id="checkout-button", data_testid="checkout-submit",
+    )
+
+    result = generate_candidate_for_step(step)
+
+    assert result.has_candidate is True
+    assert result.proposed_selector == "#checkout-button"
+    assert result.proposed_selector_kind == SELECTOR_KIND_ID
 
 
 def test_step_with_no_selector_yields_no_candidate():
@@ -476,9 +516,60 @@ def test_propose_healing_against_real_diagnose_execution_result_output():
     assert proposal.eligible is True
     assert proposal.generated_step_id == "gen-click-1"
     assert proposal.original_selector == "#checkout-submit"
-    # Honest outcome given real evidence today: no candidate.
+    # This step was generated with no secondary-identifier evidence
+    # (element_id/data_testid unset) -- honest outcome: no candidate.
+    # See the next test for the case where genuine evidence exists.
     assert proposal.has_candidate is False
     assert proposal.safe_to_apply is False
+
+
+def test_full_real_healing_cycle_with_genuine_dual_identifier_evidence():
+    """
+    End-to-end proof that the Phase 4 selector-evidence milestone
+    actually closes the loop: real diagnose_execution_result() ->
+    real propose_healing() -> real apply_healing(), using a
+    LocalGeneratedTest whose failed step genuinely carries both a
+    primary selector and real secondary-identifier evidence (as it
+    would after passing through the real Recorder -> Intelligence ->
+    storage -> diagnosis reconstruction pipeline).
+    """
+    gt = _generated_test(
+        [
+            _navigate_step(step_id="gen-nav-1"),
+            _click_step(
+                step_id="gen-click-1",
+                selector="#checkout-button",
+                selector_kind="id",
+                element_id="checkout-button",
+                data_testid="checkout-submit",
+            ),
+        ]
+    )
+    execution_result = ExecutionResult(
+        status="failed",
+        failedStepIndex=1,
+        failedStepId="gen-click-1",
+        error='page.click: waiting for locator("#checkout-button") failed: element not found',
+        executedStepCount=2,
+    )
+
+    diagnosis = diagnose_execution_result(gt, execution_result)
+    assert diagnosis.classification == UNCERTAIN
+
+    proposal = propose_healing(diagnosis, gt)
+    assert proposal.eligible is True
+    assert proposal.has_candidate is True
+    assert proposal.safe_to_apply is True
+    assert proposal.proposed_selector == '[data-testid="checkout-submit"]'
+
+    healed = apply_healing(gt, proposal)
+
+    assert healed.steps[1].selector == '[data-testid="checkout-submit"]'
+    assert healed.steps[1].selector_kind == SELECTOR_KIND_DATA_TESTID
+    # Original untouched (pure function).
+    assert gt.steps[1].selector == "#checkout-button"
+    # The untouched navigate step is the exact same object.
+    assert healed.steps[0] is gt.steps[0]
 
 
 def test_propose_healing_against_real_application_bug_diagnosis_is_ineligible():

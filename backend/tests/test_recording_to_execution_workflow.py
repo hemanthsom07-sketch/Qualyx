@@ -217,3 +217,77 @@ def test_recording_to_execution_to_diagnosis_workflow(client):
     #     the full execution/diagnosis/explanation response ---
     execute_body_text = execute_response.text
     assert "card-number" not in execute_body_text
+
+
+def test_recording_ingestion_preserves_dual_selector_evidence_in_stored_test_definition(client):
+    """
+    Phase 4 selector-evidence milestone (item 11): when a recorded
+    element genuinely has both a real HTML id and a real data-testid,
+    POST /projects/{project_id}/recordings must preserve BOTH as
+    evidence in the stored TestDefinition content -- not just the one
+    chosen as the primary selector. Exercises the real, unmocked
+    Intelligence pipeline end-to-end via the real HTTP API only.
+    """
+    project_id = _create_project(client)
+
+    payload = {
+        "journeyId": "journey-dual-evidence",
+        "events": [
+            {
+                "id": "evt-1",
+                "type": "page_load",
+                "timestamp": 1000.0,
+                "pageUrl": "https://shop.example.com/",
+            },
+            {
+                "id": "evt-2",
+                "type": "click",
+                "timestamp": 1200.0,
+                "pageUrl": "https://shop.example.com/",
+                "targetTag": "button",
+                "elementHtmlId": "checkout-button",
+                "elementDataTestId": "checkout-submit",
+                "elementText": "Checkout",
+            },
+        ],
+    }
+
+    response = client.post(f"/projects/{project_id}/recordings", json=payload)
+    assert response.status_code == 201
+
+    content = response.json()["content"]
+    click_step = content[1]
+
+    # Existing, unchanged preference rule: data-testid remains primary.
+    assert click_step["selector"] == '[data-testid="checkout-submit"]'
+    assert click_step["selectorKind"] == "data-testid"
+    # New evidence: the non-primary identifier survived, not discarded.
+    assert click_step["stableElementId"] == "checkout-button"
+    assert click_step["stableDataTestId"] == "checkout-submit"
+
+
+def test_recording_ingestion_with_single_identifier_stores_no_fabricated_evidence(client):
+    project_id = _create_project(client)
+
+    payload = {
+        "journeyId": "journey-single-evidence",
+        "events": [
+            {
+                "id": "evt-1",
+                "type": "click",
+                "timestamp": 1000.0,
+                "pageUrl": "https://shop.example.com/",
+                "targetTag": "button",
+                "elementHtmlId": "checkout-button",
+                # no elementDataTestId -- genuinely only one identifier known
+            },
+        ],
+    }
+
+    response = client.post(f"/projects/{project_id}/recordings", json=payload)
+    assert response.status_code == 201
+
+    click_step = response.json()["content"][0]
+    assert click_step["selector"] == "#checkout-button"
+    assert click_step["stableElementId"] == "checkout-button"
+    assert "stableDataTestId" not in click_step  # never fabricated

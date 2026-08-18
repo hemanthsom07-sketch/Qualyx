@@ -161,6 +161,37 @@ def test_event_order_is_preserved_even_with_skips_interleaved():
     assert result.skipped_event_ids == ["e1", "e3"]
 
 
+def test_normalization_preserves_both_stable_identifiers_when_both_are_known():
+    """
+    Phase 4 selector-evidence milestone (item 7 of the audit):
+    _normalize_element() must copy BOTH element_id and data_testid
+    through to LocalNormalizedElement, verbatim, when both are known on
+    the raw element -- neither collapsed, neither dropped.
+    """
+    raw = LocalRawJourney(
+        journey_id="journey-dual-id",
+        events=[
+            LocalRawEvent(
+                event_id="e1",
+                event_type=EVENT_CLICK,
+                url="https://shop.test/",
+                element=LocalRawElementInfo(
+                    tag="button",
+                    element_id="checkout-button",
+                    data_testid="checkout-submit",
+                ),
+            ),
+        ],
+    )
+
+    normalized = understand_journey(raw)
+
+    element = normalized.steps[0].element
+    assert element is not None
+    assert element.element_id == "checkout-button"
+    assert element.data_testid == "checkout-submit"
+
+
 if __name__ == "__main__":
     # Plain-Python runner so this suite works even without pytest installed.
     test_functions = [

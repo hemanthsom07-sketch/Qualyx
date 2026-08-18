@@ -17,34 +17,41 @@ approved architecture:
 
     FailureDiagnosisResult -> eligibility -> candidate -> proposal -> apply
 
-IMPORTANT, GROUNDED IN THE ACTUAL CURRENT REPOSITORY (confirmed by
-direct inspection before writing this module -- see the Phase 4 audit
-report):
+IMPORTANT, GROUNDED IN THE ACTUAL CURRENT REPOSITORY:
 
-- Recorder's getStableIdentifier() (recorder/src/lib/eventCapture.ts)
-  returns an element's `id` attribute if present, and ONLY checks
-  `data-testid` when `id` is absent -- it never captures both. This
-  means, structurally, NO real recording captured by the CURRENT
-  Recorder ever carries more than one stable identifier for the same
-  element.
-- intelligence.test_generation.generated_test.LocalGeneratedStep only
-  ever stores the ONE already-chosen `selector`/`selector_kind` -- it
-  has no field for a second, unused identifier, because there never is
-  one in the real pipeline.
+Updated for the Phase 4 selector-evidence milestone. Previously (see
+git history), Recorder's getStableIdentifier() collapsed an element's
+`id`/`data-testid` into a single preferred value, and
+LocalGeneratedStep had no field for the non-chosen identifier, so
+candidate generation against real data always concluded "no candidate
+available." That evidence gap has now been closed:
+
+- Recorder's getStableIdentifiers() (recorder/src/lib/eventCapture.ts,
+  distinct from the legacy, still-unchanged getStableIdentifier())
+  independently captures BOTH the `id` and `data-testid` attributes
+  when both are genuinely present on an element, with neither derived
+  from the other and neither fabricated when absent.
+- That evidence now survives, additively, through the Backend
+  recording schema, the Intelligence adapter/normalization/generation
+  pipeline, execution-payload serialization, and stored TestDefinition
+  content, into LocalGeneratedStep's `element_id`/`data_testid` fields
+  (see test_generation/generated_test.py and
+  test_generation/engine.py's _resolve_stable_selector()).
 - The real ExecutionResult/FailureEvidence contract
-  (intelligence.diagnosis.execution_result) has no DOM snapshot and no
-  list of candidate elements currently on the page.
+  (intelligence.diagnosis.execution_result) still has no DOM snapshot
+  and no list of candidate elements currently on the page -- that
+  remains a genuine gap for anything beyond the two identifiers
+  Recorder itself can observe at capture time.
 
 Consequently: candidate generation against data actually produced by
-today's real Recorder -> Intelligence -> Execution pipeline will,
-honestly and correctly, almost always conclude "no candidate
-available" -- this is not a bug or an unfinished stub; it is the
-correct, evidence-based answer given what the current repository
-genuinely knows. See generate_candidate_for_step()'s docstring for the
-one structural scenario (a step that happens to carry two independently
-known identifiers) this module is written to use correctly, should a
-future data source ever provide it, without requiring any redesign
-here.
+today's real Recorder -> Intelligence -> Execution pipeline will now
+genuinely find a real candidate whenever the recorded element had both
+a real `id` and a real `data-testid` -- and will still honestly report
+"no candidate available" when only one was ever known (still the
+common case: many elements only have one of the two attributes, and
+recordings captured before this milestone only ever have one). Neither
+outcome is a fabrication; both are the correct, evidence-based answer
+given what's actually known for that element.
 
 No selector is ever guessed from element text. No selector is ever
 invented. No DOM is queried. No LLM is used.
@@ -324,15 +331,20 @@ def generate_candidate_for_step(matched_step: LocalGeneratedStep) -> SelectorCan
     Real-world integration point: builds KnownElementIdentifiers from
     an actual LocalGeneratedStep.
 
-    Because LocalGeneratedStep only ever has ONE of
-    (element_id, data_testid) represented at all -- as `selector`/
-    `selector_kind`, per the real Recorder/Intelligence contract (see
-    module docstring) -- this will, honestly, always report
-    has_candidate=False for any step actually produced by today's real
-    pipeline. It is still written as a genuine, generic evaluation
-    (not a hardcoded stub): if LocalGeneratedStep or its upstream data
-    ever legitimately carried a second identifier, this function would
-    use it correctly without modification.
+    Phase 4 selector-evidence milestone: LocalGeneratedStep now carries
+    `element_id`/`data_testid` as genuine secondary-identifier evidence
+    (see test_generation/generated_test.py and
+    test_generation/engine.py's _resolve_stable_selector()), populated
+    whenever Recorder captured both a real HTML id and a real
+    data-testid for the element (see
+    recorder/src/lib/eventCapture.ts's getStableIdentifiers()) and that
+    evidence survived storage (see
+    backend/app/services/diagnosis_client.py's
+    _generated_test_from_stored_content()). When only one identifier
+    was ever genuinely known -- still the common case for older
+    recordings, or any element that only has one of the two attributes
+    -- this correctly yields has_candidate=False; no fabrication either
+    way.
     """
     if matched_step.selector_kind not in _VALID_SELECTOR_KINDS or not matched_step.selector:
         return SelectorCandidateResult(
@@ -344,11 +356,10 @@ def generate_candidate_for_step(matched_step: LocalGeneratedStep) -> SelectorCan
             ),
         )
 
-    # LocalGeneratedStep structurally never carries a second identifier
-    # alongside the one it stored -- see module docstring. Both fields
-    # of KnownElementIdentifiers can never both be populated from this
-    # real object today.
-    known = KnownElementIdentifiers()
+    known = KnownElementIdentifiers(
+        element_id=matched_step.element_id,
+        data_testid=matched_step.data_testid,
+    )
 
     return generate_selector_candidate(matched_step.selector_kind, known)
 

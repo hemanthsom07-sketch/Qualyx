@@ -2,12 +2,16 @@
   "name": "qualyx-recorder",
   "private": true,
   "version": "0.0.1",
+  "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json && esbuild src/content.ts --bundle --format=iife --platform=browser --target=es2020 --outfile=dist/src/content.js"
+    "build": "tsc -p tsconfig.json && esbuild src/content.ts --bundle --format=iife --platform=browser --target=es2020 --outfile=dist/src/content.js",
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.269",
     "esbuild": "^0.28.1",
-    "typescript": "^5.5.2"
+    "typescript": "^5.5.2",
+    "tsx": "^4.15.0",
+    "@types/node": "^20.14.0"
   }
 }

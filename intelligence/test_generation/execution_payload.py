@@ -62,6 +62,17 @@ def to_execution_step_payload(step: LocalGeneratedStep) -> dict:
         payload["selectorKind"] = step.selector_kind
     if step.value is not None:
         payload["value"] = step.value
+    # Phase 4 selector-evidence milestone: additive, optional evidence
+    # for Healing -- the Execution Engine has no use for these and
+    # ignores unrecognized keys (see execution-engine/src/validate.ts,
+    # which reconstructs a step object by picking only known fields).
+    # Named distinctly from Recorder's own `elementId` field (a
+    # different concept: a single, preference-collapsed encoding) to
+    # avoid any ambiguity at this layer.
+    if step.element_id is not None:
+        payload["stableElementId"] = step.element_id
+    if step.data_testid is not None:
+        payload["stableDataTestId"] = step.data_testid
     return payload
 
 

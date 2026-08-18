@@ -52,6 +52,14 @@ class ClickStep(BaseModel):
     # use for it (execution-engine ignores it), but preserves it verbatim
     # in stored content rather than silently dropping it.
     selector_kind: str | None = Field(default=None, alias="selectorKind", min_length=1)
+    # Phase 4 selector-evidence milestone: the raw stable identifier(s)
+    # genuinely known for this step's element, independent of which one
+    # was chosen as the primary `selector` above. Same preservation
+    # rationale as selector_kind: the Backend/execution-engine has no
+    # use for these, but they must not be silently dropped, since
+    # Healing (app/services/diagnosis_client.py) needs them later.
+    stable_element_id: str | None = Field(default=None, alias="stableElementId", min_length=1)
+    stable_data_testid: str | None = Field(default=None, alias="stableDataTestId", min_length=1)
 
 
 class FillStep(BaseModel):
@@ -62,6 +70,8 @@ class FillStep(BaseModel):
     selector: str = Field(min_length=1)
     value: str = ""
     selector_kind: str | None = Field(default=None, alias="selectorKind", min_length=1)
+    stable_element_id: str | None = Field(default=None, alias="stableElementId", min_length=1)
+    stable_data_testid: str | None = Field(default=None, alias="stableDataTestId", min_length=1)
 
 
 Step = Union[NavigateStep, ClickStep, FillStep]

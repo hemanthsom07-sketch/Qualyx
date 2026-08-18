@@ -76,6 +76,116 @@ def test_click_event_with_data_testid_encoding_produces_data_testid_selector():
     assert generated.steps[0].selector_kind == "data-testid"
 
 
+# --- Phase 4 selector-evidence preservation ---
+
+
+def test_click_event_with_both_identifiers_preserves_both_as_evidence():
+    """
+    When Recorder sends the new, independently-captured
+    elementHtmlId/elementDataTestId fields (both present), the existing
+    selector preference rule still picks data-testid as the PRIMARY
+    selector (unchanged), but the non-chosen HTML id must now survive
+    as evidence on the generated step rather than being discarded.
+    """
+    events = [
+        RealRecordedEvent(
+            id="evt-1",
+            type="click",
+            timestamp=1003.0,
+            pageUrl="https://shop.test/",
+            targetTag="button",
+            elementHtmlId="checkout-button",
+            elementDataTestId="checkout-submit",
+            elementText="Checkout",
+        )
+    ]
+
+    generated = generate_test_from_real_recorder_events("journey-4", events)
+    step = generated.steps[0]
+
+    # Primary selector: existing preference rule unchanged.
+    assert step.selector == '[data-testid="checkout-submit"]'
+    assert step.selector_kind == "data-testid"
+    # Evidence: both raw identifiers preserved, verbatim.
+    assert step.element_id == "checkout-button"
+    assert step.data_testid == "checkout-submit"
+
+
+def test_fill_event_with_both_identifiers_preserves_both_as_evidence():
+    events = [
+        RealRecordedEvent(
+            id="evt-1",
+            type="input_change",
+            timestamp=1004.0,
+            pageUrl="https://shop.test/search",
+            targetTag="input",
+            elementHtmlId="search-box",
+            elementDataTestId="search-input",
+            value="running shoes",
+        )
+    ]
+
+    generated = generate_test_from_real_recorder_events("journey-5", events)
+    step = generated.steps[0]
+
+    assert step.kind == GEN_STEP_FILL
+    assert step.selector_kind == "data-testid"
+    assert step.element_id == "search-box"
+    assert step.data_testid == "search-input"
+    assert step.value == "running shoes"
+
+
+def test_click_event_with_only_html_id_via_new_fields_has_no_fabricated_data_testid():
+    events = [
+        RealRecordedEvent(
+            id="evt-1",
+            type="click",
+            timestamp=1005.0,
+            pageUrl="https://shop.test/",
+            targetTag="button",
+            elementHtmlId="checkout-button",
+        )
+    ]
+
+    generated = generate_test_from_real_recorder_events("journey-6", events)
+    step = generated.steps[0]
+
+    assert step.selector == "#checkout-button"
+    assert step.selector_kind == "id"
+    assert step.element_id == "checkout-button"
+    assert step.data_testid is None  # never fabricated
+
+
+def test_legacy_element_id_only_payload_still_produces_no_secondary_evidence():
+    """
+    Backward compatibility: an older-style event using only the legacy
+    single `elementId` field (no new elementHtmlId/elementDataTestId)
+    must continue to work exactly as before -- the non-chosen
+    identifier is genuinely unknown in this case (Recorder's old
+    encoding is inherently lossy), so element_id/data_testid on the
+    generated step correctly reflect only what was actually decodable,
+    never fabricating the missing one.
+    """
+    events = [
+        RealRecordedEvent(
+            id="evt-1",
+            type="click",
+            timestamp=1006.0,
+            pageUrl="https://shop.test/",
+            targetTag="button",
+            elementId="checkout-button",  # legacy field only
+        )
+    ]
+
+    generated = generate_test_from_real_recorder_events("journey-7", events)
+    step = generated.steps[0]
+
+    assert step.selector == "#checkout-button"
+    assert step.selector_kind == "id"
+    assert step.element_id == "checkout-button"
+    assert step.data_testid is None  # genuinely unknown via the legacy encoding
+
+
 def test_input_change_with_normal_value_produces_fill_step():
     events = [
         RealRecordedEvent(
@@ -213,6 +323,31 @@ def test_adapter_treats_missing_redacted_flag_as_not_redacted():
 
     assert adapted.redacted is False
     assert adapted.input_value == "SAVE10"
+
+
+def test_adapter_directly_preserves_both_identifiers_in_raw_element_info():
+    """
+    Unit-level check on the adapter itself (item 6/7 of the Phase 4
+    selector-evidence audit): adapt_real_event() must place BOTH
+    identifiers onto LocalRawElementInfo when both are genuinely known,
+    not just when observed indirectly through the full generated-test
+    pipeline.
+    """
+    event = RealRecordedEvent(
+        id="evt-1",
+        type="click",
+        timestamp=1007.0,
+        pageUrl="https://shop.test/",
+        targetTag="button",
+        elementHtmlId="checkout-button",
+        elementDataTestId="checkout-submit",
+    )
+
+    raw_event = adapt_real_event(event)
+
+    assert raw_event.element is not None
+    assert raw_event.element.element_id == "checkout-button"
+    assert raw_event.element.data_testid == "checkout-submit"
 
 
 if __name__ == "__main__":

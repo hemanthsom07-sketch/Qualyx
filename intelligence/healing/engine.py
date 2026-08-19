@@ -214,6 +214,25 @@ def determine_eligibility(
             generated_step_id=diagnosis.generated_step_id,
         )
 
+    if matched_step.selector_kind not in _VALID_SELECTOR_KINDS:
+        # A step can have a `selector` string without a recorded
+        # `selector_kind` (e.g. older stored content predating the
+        # optional selectorKind field, or content created without it).
+        # Healing's candidate algorithm is keyed entirely off knowing
+        # which kind the current selector is ("id" vs "data-testid"),
+        # so without it there is nothing safe to compare against or
+        # propose a replacement for.
+        return HealingEligibility(
+            eligible=False,
+            reason=(
+                "The correlated step's selector has no recorded "
+                "selector_kind ('id'/'data-testid'); healing cannot "
+                "safely determine what kind of replacement to look for."
+            ),
+            classification=diagnosis.classification,
+            generated_step_id=diagnosis.generated_step_id,
+        )
+
     return HealingEligibility(
         eligible=True,
         reason=(

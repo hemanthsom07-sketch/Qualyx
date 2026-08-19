@@ -15,14 +15,16 @@ dataclasses, not a JSON wire contract owned by another language/process
 counterpart to alias against).
 
 ExecutionResultWithDiagnosisOut is additive: it subclasses the existing,
-unmodified ExecutionResultOut (reused, not duplicated) and adds two new
-top-level fields, `diagnosis` and `explanation`. Every field the
-existing ExecutionResultOut response already had is unchanged.
+unmodified ExecutionResultOut (reused, not duplicated) and adds three
+new top-level fields, `diagnosis`, `explanation`, and (Phase 4 Stage E)
+`healing`. Every field the existing ExecutionResultOut response already
+had is unchanged.
 """
 
 from pydantic import BaseModel, ConfigDict
 
 from app.schemas.execution import ExecutionResultOut
+from app.schemas.healing import HealingResultOut
 
 
 class DiagnosisOut(BaseModel):
@@ -61,10 +63,15 @@ class ExplanationOut(BaseModel):
 class ExecutionResultWithDiagnosisOut(ExecutionResultOut):
     """
     Additive response shape for POST /tests/{test_id}/execute: every
-    field ExecutionResultOut already returned, unchanged, plus two new
-    top-level objects: `diagnosis` (raw FailureDiagnosisResult mirror)
-    and `explanation` (raw ExplainedDiagnosis mirror).
+    field ExecutionResultOut already returned, unchanged, plus three
+    new top-level objects: `diagnosis` (raw FailureDiagnosisResult
+    mirror), `explanation` (raw ExplainedDiagnosis mirror), and
+    (Phase 4 Stage E) `healing` (raw HealingAttemptResult mirror --
+    always present on any response, matching diagnosis/explanation's
+    own always-present convention; reports status="not_attempted" on a
+    passing execution rather than being omitted/null).
     """
 
     diagnosis: DiagnosisOut
     explanation: ExplanationOut
+    healing: HealingResultOut

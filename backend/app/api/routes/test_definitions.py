@@ -5,8 +5,15 @@ from app.database import get_db
 from app.models.project import Project
 from app.models.test_definition import TestDefinition
 from app.schemas.diagnosis import DiagnosisOut, ExecutionResultWithDiagnosisOut, ExplanationOut
+from app.schemas.healing import HealingResultOut
 from app.schemas.test_definition import ExecutionPayloadCreate, TestDefinitionCreate, TestDefinitionRead
 from app.services.diagnosis_client import diagnose_and_explain
+from app.services.healing_client import (
+    build_healing_result,
+    not_attempted_result,
+    prepare_healing_attempt,
+    HEALING_FAILED,
+)
 from app.services.execution_client import (
     ExecutionEngineError,
     ExecutionValidationError,
@@ -131,6 +138,18 @@ def execute_test_definition(test_id: str, db: Session = Depends(get_db)) -> Exec
     top-level fields. No diagnosis or explainability logic is duplicated
     here — both are computed entirely by Intelligence's existing,
     unmodified functions; this endpoint only translates and forwards.
+
+    Phase 4 Stage E: on a failed execution, this endpoint now also
+    attempts healing (in-process boundary — see
+    app/services/healing_client.py) and returns a third additive field,
+    `healing`. At most ONE additional execute_steps() call is ever made
+    (no loop; the healed steps are only executed once, and their result
+    is never re-diagnosed or re-healed). The original, persisted
+    TestDefinition is never modified — healing operates entirely on an
+    in-memory reconstruction and, if a real evidence-backed candidate
+    exists, an in-memory healed copy of it. `healing.status` is only
+    ever "healed" when that second execution's own status was "passed";
+    "healing_failed" when it was applied but still failed.
     """
     test_definition = _get_test_definition_or_404(test_id, db)
 
@@ -142,6 +161,30 @@ def execute_test_definition(test_id: str, db: Session = Depends(get_db)) -> Exec
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
     diagnosis, explanation = diagnose_and_explain(test_definition.id, test_definition.content, result)
+
+    if diagnosis.has_failure:
+        proposal, healed_steps = prepare_healing_attempt(test_definition.id, test_definition.content, diagnosis)
+        if healed_steps is None:
+            healing_result = build_healing_result(diagnosis, proposal, None)
+        else:
+            try:
+                healed_execution = execute_steps(healed_steps)
+            except (ExecutionValidationError, ExecutionEngineError) as exc:
+                # Defensive: the healed steps should always be
+                # structurally valid (they're the same steps, minus one
+                # replaced selector), but if the engine itself errors
+                # out entirely on the second call, that is reported as
+                # healing_failed rather than letting an unrelated
+                # 422/502 leak from the healing attempt and mask the
+                # original execution's own response.
+                healing_result = build_healing_result(diagnosis, proposal, None)
+                healing_result.status = HEALING_FAILED
+                healing_result.applied = True
+                healing_result.reason = f"The healed steps could not be executed: {exc}"
+            else:
+                healing_result = build_healing_result(diagnosis, proposal, healed_execution)
+    else:
+        healing_result = not_attempted_result()
 
     return ExecutionResultWithDiagnosisOut(
         status=result.status,
@@ -156,4 +199,5 @@ def execute_test_definition(test_id: str, db: Session = Depends(get_db)) -> Exec
         evidence=result.evidence,
         diagnosis=DiagnosisOut.model_validate(diagnosis),
         explanation=ExplanationOut.model_validate(explanation),
+        healing=HealingResultOut.model_validate(healing_result),
     )

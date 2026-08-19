@@ -169,6 +169,30 @@ def test_correlated_uncertain_on_click_step_is_eligible():
     assert result.generated_step_id == "gen-click-1"
 
 
+def test_correlated_uncertain_on_click_step_without_selector_kind_is_not_eligible():
+    """
+    Regression test (found during Phase 4 Stage E integration testing):
+    a step can have a real `selector` string but no recorded
+    `selector_kind` (e.g. older stored TestDefinition content from
+    before selectorKind was introduced as an optional field). Healing's
+    candidate algorithm is keyed entirely on knowing whether the
+    current selector is "id" or "data-testid", so eligibility must
+    require selector_kind to be known too -- previously this only
+    checked `selector`, which allowed propose_healing()'s own internal
+    assumption (that an eligible step always has a selector_kind) to be
+    violated for real, legitimately-shaped data.
+    """
+    gt = _generated_test(
+        [_click_step(step_id="gen-click-1", selector="#checkout-submit", selector_kind=None)]
+    )
+    diagnosis = _diagnosis(classification=UNCERTAIN, confidence=0.25, generated_step_id="gen-click-1")
+
+    result = determine_eligibility(diagnosis, gt)
+
+    assert result.eligible is False
+    assert "selector_kind" in result.reason.lower()
+
+
 def test_correlated_uncertain_on_fill_step_is_eligible():
     gt = _generated_test([_navigate_step(), _fill_step()])
     diagnosis = _diagnosis(classification=UNCERTAIN, confidence=0.25, generated_step_id="gen-fill-1")

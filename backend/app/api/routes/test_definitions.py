@@ -1,10 +1,14 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.execution_run import ExecutionRun
 from app.models.project import Project
 from app.models.test_definition import TestDefinition
 from app.schemas.diagnosis import DiagnosisOut, ExecutionResultWithDiagnosisOut, ExplanationOut
+from app.schemas.execution import ExecutionResultOut
 from app.schemas.healing import HealingResultOut
 from app.schemas.test_definition import ExecutionPayloadCreate, TestDefinitionCreate, TestDefinitionRead
 from app.services.diagnosis_client import diagnose_and_explain
@@ -19,6 +23,8 @@ from app.services.execution_client import (
     ExecutionValidationError,
     execute_steps,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["test-definitions"])
 
@@ -35,6 +41,47 @@ def _get_test_definition_or_404(test_id: str, db: Session) -> TestDefinition:
     if test_definition is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Test definition not found")
     return test_definition
+
+
+def _persist_execution_run(db: Session, test_definition_id: str, result: ExecutionResultOut) -> None:
+    """
+    Execution History Stage 1: persists the raw execution result exactly
+    as reported, with no diagnosis/explanation/healing information (see
+    app/models/execution_run.py -- those are separate, later stages).
+
+    NON-FATAL by design: a persistence failure here must never turn a
+    valid execution response into an HTTP 500, must never retry the
+    execution, and must never alter `result` itself. On failure, this
+    rolls back the session (so it remains usable for the rest of the
+    request/future requests) and logs the failure via the standard
+    `logging` module -- no other logging convention exists elsewhere in
+    this codebase to follow instead.
+    """
+    try:
+        run = ExecutionRun(
+            test_definition_id=test_definition_id,
+            status=result.status,
+            failed_step_id=result.failed_step_id,
+            failed_step_index=result.failed_step_index,
+            error=result.error,
+            executed_step_count=result.executed_step_count,
+            evidence=result.evidence.model_dump(by_alias=True) if result.evidence is not None else None,
+            started_at=result.started_at,
+            finished_at=result.finished_at,
+            duration_ms=result.duration_ms,
+        )
+        db.add(run)
+        db.commit()
+    except Exception:  # noqa: BLE001 - deliberately broad: persistence
+        # must never be allowed to break the execution response,
+        # regardless of what specifically went wrong (DB unavailable,
+        # constraint violation, etc.).
+        db.rollback()
+        logger.exception(
+            "Failed to persist ExecutionRun for test_definition_id=%s; "
+            "the execution response itself is unaffected.",
+            test_definition_id,
+        )
 
 
 @router.post(
@@ -159,6 +206,13 @@ def execute_test_definition(test_id: str, db: Session = Depends(get_db)) -> Exec
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except ExecutionEngineError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    # Execution History Stage 1: persist the raw result. Non-fatal --
+    # see _persist_execution_run()'s docstring. Deliberately only the
+    # ORIGINAL execution result (not a healed re-execution, if any
+    # happens below) -- diagnosis/explanation/healing persistence are
+    # separate, later stages.
+    _persist_execution_run(db, test_definition.id, result)
 
     diagnosis, explanation = diagnose_and_explain(test_definition.id, test_definition.content, result)
 

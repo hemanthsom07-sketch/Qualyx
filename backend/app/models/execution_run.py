@@ -1,14 +1,15 @@
 """
-ExecutionRun persistence model (Execution History Stage 1).
+ExecutionRun persistence model (Execution History Stage 1 + Stage 2).
 
 Persists the raw, deterministic execution-level result for every
 POST /tests/{test_id}/execute call -- exactly what the Execution
 Engine reported (execution-engine/src/types.ts's ExecutionResult),
 mirrored the same way app/schemas/execution.py's ExecutionResultOut
-already mirrors it for the API response. This stage intentionally does
-NOT persist diagnosis, explanation, or healing information -- those are
-separate, later stages (see the milestone plan), so this table has no
-columns for them.
+already mirrors it for the API response. Stage 1 intentionally did NOT
+persist diagnosis, explanation, or healing information. Stage 2 adds
+diagnosis and explanation as complete, verbatim snapshots (see below);
+healing persistence remains a separate, later stage (Stage 3), so this
+table still has no healing columns.
 
 Belongs to a TestDefinition through a foreign key, following the exact
 same id/timestamp/FK conventions already established by
@@ -23,6 +24,15 @@ whole Project, everywhere else in this codebase.
 evidence is stored as JSON exactly as it arrives from
 ExecutionResultOut.evidence.model_dump() (or None on a passing run) --
 no reinterpretation, no new shape.
+
+Stage 2: diagnosis/explanation are stored as JSON columns, not separate
+tables -- consistent with evidence's own existing precedent above, and
+appropriate for what these represent: an immutable, point-in-time
+snapshot of app/schemas/diagnosis.py's DiagnosisOut/ExplanationOut
+(themselves unmodified by this stage), not an evolving relational
+structure. Each column holds the complete schema's fields verbatim
+(via .model_dump()) -- no field subset, no new fields invented, no
+healing data included.
 """
 
 import uuid
@@ -60,6 +70,16 @@ class ExecutionRun(Base):
     # Structured FailureEvidence, stored as JSON exactly as reported;
     # None on a passing run.
     evidence: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Execution History Stage 2: complete DiagnosisOut/ExplanationOut
+    # snapshots, stored as JSON exactly as the live API response
+    # produced them (same field set, same values -- see
+    # app/api/routes/test_definitions.py's _persist_execution_run()).
+    # Nullable for schema robustness, matching `evidence` above, though
+    # in the route's current behavior diagnose_and_explain() runs
+    # unconditionally, so both are populated on every row today.
+    diagnosis: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    explanation: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # Execution Engine's own reported timing (ISO-format strings, same
     # as ExecutionResultOut.started_at/finished_at -- stored verbatim,

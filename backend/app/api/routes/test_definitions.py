@@ -43,19 +43,34 @@ def _get_test_definition_or_404(test_id: str, db: Session) -> TestDefinition:
     return test_definition
 
 
-def _persist_execution_run(db: Session, test_definition_id: str, result: ExecutionResultOut) -> None:
+def _persist_execution_run(
+    db: Session,
+    test_definition_id: str,
+    result: ExecutionResultOut,
+    diagnosis: DiagnosisOut,
+    explanation: ExplanationOut,
+) -> None:
     """
-    Execution History Stage 1: persists the raw execution result exactly
-    as reported, with no diagnosis/explanation/healing information (see
-    app/models/execution_run.py -- those are separate, later stages).
+    Execution History Stage 1 + Stage 2: persists the raw execution
+    result together with a complete, verbatim DiagnosisOut/ExplanationOut
+    snapshot (see app/models/execution_run.py). Healing is deliberately
+    NOT persisted here -- that is a separate, later stage.
+
+    Called once, after diagnosis/explanation are both available (moved
+    from Stage 1's original insertion point, which was immediately
+    after execute_steps() -- an explicitly approved change for Stage 2,
+    so the whole row can be written in a single INSERT rather than an
+    insert-then-update). Stage 1's own guarantees are unchanged: exactly
+    one row per execution, the same execution fields, non-fatal failure
+    behavior.
 
     NON-FATAL by design: a persistence failure here must never turn a
     valid execution response into an HTTP 500, must never retry the
-    execution, and must never alter `result` itself. On failure, this
-    rolls back the session (so it remains usable for the rest of the
-    request/future requests) and logs the failure via the standard
-    `logging` module -- no other logging convention exists elsewhere in
-    this codebase to follow instead.
+    execution, and must never alter `result`/`diagnosis`/`explanation`
+    themselves. On failure, this rolls back the session (so it remains
+    usable for the rest of the request/future requests) and logs the
+    failure via the standard `logging` module -- no other logging
+    convention exists elsewhere in this codebase to follow instead.
     """
     try:
         run = ExecutionRun(
@@ -66,6 +81,8 @@ def _persist_execution_run(db: Session, test_definition_id: str, result: Executi
             error=result.error,
             executed_step_count=result.executed_step_count,
             evidence=result.evidence.model_dump(by_alias=True) if result.evidence is not None else None,
+            diagnosis=diagnosis.model_dump(),
+            explanation=explanation.model_dump(),
             started_at=result.started_at,
             finished_at=result.finished_at,
             duration_ms=result.duration_ms,
@@ -207,14 +224,21 @@ def execute_test_definition(test_id: str, db: Session = Depends(get_db)) -> Exec
     except ExecutionEngineError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
-    # Execution History Stage 1: persist the raw result. Non-fatal --
-    # see _persist_execution_run()'s docstring. Deliberately only the
-    # ORIGINAL execution result (not a healed re-execution, if any
-    # happens below) -- diagnosis/explanation/healing persistence are
-    # separate, later stages.
-    _persist_execution_run(db, test_definition.id, result)
-
     diagnosis, explanation = diagnose_and_explain(test_definition.id, test_definition.content, result)
+
+    # Execution History Stage 1 + Stage 2: persist the raw result
+    # together with a complete diagnosis/explanation snapshot, in a
+    # single row/INSERT. Non-fatal -- see _persist_execution_run()'s
+    # docstring. Deliberately only the ORIGINAL execution result (not a
+    # healed re-execution, if any happens below) -- healing persistence
+    # is a separate, later stage.
+    _persist_execution_run(
+        db,
+        test_definition.id,
+        result,
+        DiagnosisOut.model_validate(diagnosis),
+        ExplanationOut.model_validate(explanation),
+    )
 
     if diagnosis.has_failure:
         proposal, healed_steps = prepare_healing_attempt(test_definition.id, test_definition.content, diagnosis)

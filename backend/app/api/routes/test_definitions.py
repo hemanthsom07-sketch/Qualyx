@@ -9,6 +9,7 @@ from app.models.project import Project
 from app.models.test_definition import TestDefinition
 from app.schemas.diagnosis import DiagnosisOut, ExecutionResultWithDiagnosisOut, ExplanationOut
 from app.schemas.execution import ExecutionResultOut
+from app.schemas.execution_run import ExecutionRunRead
 from app.schemas.healing import HealingResultOut
 from app.schemas.test_definition import ExecutionPayloadCreate, TestDefinitionCreate, TestDefinitionRead
 from app.services.diagnosis_client import diagnose_and_explain
@@ -199,6 +200,48 @@ def list_test_definitions(project_id: str, db: Session = Depends(get_db)) -> lis
 @router.get("/tests/{test_id}", response_model=TestDefinitionRead)
 def get_test_definition(test_id: str, db: Session = Depends(get_db)) -> TestDefinition:
     return _get_test_definition_or_404(test_id, db)
+
+
+@router.get("/tests/{test_id}/executions", response_model=list[ExecutionRunRead])
+def list_execution_runs(test_id: str, db: Session = Depends(get_db)) -> list[ExecutionRun]:
+    """
+    Execution History Stage 4: read-only retrieval of the ExecutionRun
+    history persisted for a TestDefinition (Stages 1-3: raw execution
+    result, diagnosis, explanation, healing -- see
+    app/models/execution_run.py).
+
+    This endpoint is purely a read: it does not call execute_steps(),
+    diagnose_and_explain(), or any healing function, and it never
+    mutates any state. It only queries previously-persisted rows.
+
+    Ordering: newest-first (created_at descending), matching the
+    existing convention already established by
+    GET /projects/{project_id}/tests (see list_test_definitions()
+    above) -- not a new convention invented for this endpoint.
+
+    No pagination: consistent with every other list endpoint in this
+    codebase today (none paginate) -- not introduced here either, per
+    the Stage 4 scope.
+
+    Authorization/ownership: this codebase has no authentication or
+    authorization layer anywhere yet (confirmed by inspection of every
+    existing route, including this one's siblings) -- this endpoint
+    follows that same existing, currently-open posture rather than
+    inventing a new one. The only "ownership" check performed is
+    confirming the requested TestDefinition itself exists (404
+    otherwise), identical to every other /tests/{test_id}/... route.
+
+    An empty history (a TestDefinition that has never been executed)
+    correctly returns an empty list, not an error.
+    """
+    _get_test_definition_or_404(test_id, db)
+
+    return list(
+        db.query(ExecutionRun)
+        .filter(ExecutionRun.test_definition_id == test_id)
+        .order_by(ExecutionRun.created_at.desc())
+        .all()
+    )
 
 
 @router.post("/tests/{test_id}/execute", response_model=ExecutionResultWithDiagnosisOut)

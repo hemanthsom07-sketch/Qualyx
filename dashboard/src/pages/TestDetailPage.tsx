@@ -1,6 +1,12 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { getTestDefinition } from "../api/client";
+import { ApiError, executeTestDefinition, getTestDefinition } from "../api/client";
+import type { ExecutionResultWithDiagnosis } from "../api/types";
+import { DiagnosisCard } from "../components/DiagnosisCard";
+import { ExecutionSummary } from "../components/ExecutionSummary";
+import { ExplanationCard } from "../components/ExplanationCard";
+import { HealingCard } from "../components/HealingCard";
 import { StateBlock } from "../components/StateBlock";
 import { useAsync } from "../hooks/useAsync";
 
@@ -17,19 +23,57 @@ function describeStep(step: Record<string, unknown>): string {
   return target ? `${type} — ${target}` : type;
 }
 
-// Stage 2: test discovery/detail page, backed by GET /tests/{id} via
-// the Stage 1 API client. Deliberately no Execute button or execution
-// results yet -- that's a later stage.
+// Execution is user-triggered (not a mount-time fetch), so it's tracked
+// separately from the test-definition load via useAsync -- a distinct,
+// explicit state machine rather than overloading useAsync's mount-based
+// model. Kept as a plain discriminated union + useState rather than
+// pulling in a state-management library, per Stage 3 scope.
+type ExecutionState =
+  | { status: "idle" }
+  | { status: "running" }
+  | { status: "success"; data: ExecutionResultWithDiagnosis }
+  | { status: "error"; message: string };
+
+// Stage 3: adds the execute workflow on top of Stage 2's test
+// discovery/detail page. Deliberately does NOT implement execution
+// history or flaky analysis (later stages) -- only the single-run
+// execute -> result/diagnosis/explanation/healing experience.
 function TestDetailPage() {
   const { testId } = useParams<{ testId: string }>();
 
-  const state = useAsync(() => getTestDefinition(testId as string), [testId]);
+  const testState = useAsync(() => getTestDefinition(testId as string), [testId]);
+  const [executionState, setExecutionState] = useState<ExecutionState>({ status: "idle" });
+
+  const isRunning = executionState.status === "running";
+
+  async function handleExecute() {
+    // Guards against duplicate requests -- the button itself is also
+    // disabled while running (belt-and-suspenders, since a fast
+    // double-click could otherwise land two clicks before the first
+    // re-render disables it).
+    if (isRunning || !testId) return;
+
+    setExecutionState({ status: "running" });
+    try {
+      const data = await executeTestDefinition(testId);
+      setExecutionState({ status: "success", data });
+    } catch (err) {
+      // A failed HTTP/API request (e.g. 502 from the Execution Engine
+      // boundary, or 422 validation) is distinct from a *valid*
+      // execution response whose `status` happens to be "failed" -- the
+      // latter is handled entirely inside the "success" branch below,
+      // via ExecutionSummary's own PASS/FAIL badge, not here.
+      const message =
+        err instanceof ApiError ? err.message : "The execution request failed unexpectedly.";
+      setExecutionState({ status: "error", message });
+    }
+  }
 
   return (
-    <section className="max-w-2xl mx-auto px-6 py-10">
-      {state.status === "success" && (
+    <section className="max-w-3xl mx-auto px-6 py-10">
+      {testState.status === "success" && (
         <Link
-          to={`/projects/${state.data.project_id}`}
+          to={`/projects/${testState.data.project_id}`}
           className="text-sm text-slate-400 hover:text-slate-200"
         >
           ← Project
@@ -37,41 +81,77 @@ function TestDetailPage() {
       )}
 
       <div className="mt-3">
-        {state.status === "loading" && (
-          <StateBlock>Loading test…</StateBlock>
+        {testState.status === "loading" && <StateBlock>Loading test…</StateBlock>}
+
+        {testState.status === "error" && (
+          <StateBlock tone="error">Couldn't load this test: {testState.message}</StateBlock>
         )}
 
-        {state.status === "error" && (
-          <StateBlock tone="error">
-            Couldn't load this test: {state.message}
-          </StateBlock>
-        )}
-
-        {state.status === "success" && (
+        {testState.status === "success" && (
           <>
-            <h2 className="text-lg font-medium">{state.data.name}</h2>
-            {state.data.description && (
-              <p className="mt-1 text-sm text-slate-400">{state.data.description}</p>
-            )}
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-medium">{testState.data.name}</h2>
+                {testState.data.description && (
+                  <p className="mt-1 text-sm text-slate-400">{testState.data.description}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleExecute}
+                disabled={isRunning}
+                aria-label={isRunning ? "Test is currently running" : "Execute this test"}
+                data-testid="execute-button"
+                className="shrink-0 rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
+              >
+                {isRunning ? "Running…" : "Execute test"}
+              </button>
+            </div>
 
             <h3 className="mt-6 text-sm font-medium text-slate-400 uppercase tracking-wide mb-3">
               Steps
             </h3>
 
-            {state.data.content.length === 0 ? (
+            {testState.data.content.length === 0 ? (
               <StateBlock>This test has no steps.</StateBlock>
             ) : (
               <ol
                 data-testid="step-list"
                 className="space-y-2 list-decimal list-inside text-sm text-slate-300"
               >
-                {state.data.content.map((step, index) => (
-                  <li key={index} className="rounded-md border border-slate-800 bg-slate-900/50 px-3 py-2">
+                {testState.data.content.map((step, index) => (
+                  <li
+                    key={index}
+                    className="rounded-md border border-slate-800 bg-slate-900/50 px-3 py-2"
+                  >
                     {describeStep(step)}
                   </li>
                 ))}
               </ol>
             )}
+
+            <div className="mt-8 space-y-4">
+              {isRunning && (
+                <StateBlock>
+                  <span role="status">Running test — this may take a few seconds…</span>
+                </StateBlock>
+              )}
+
+              {executionState.status === "error" && (
+                <StateBlock tone="error">
+                  Execution request failed: {executionState.message}
+                </StateBlock>
+              )}
+
+              {executionState.status === "success" && (
+                <>
+                  <ExecutionSummary result={executionState.data} />
+                  <ExplanationCard explanation={executionState.data.explanation} />
+                  <DiagnosisCard diagnosis={executionState.data.diagnosis} />
+                  <HealingCard healing={executionState.data.healing} />
+                </>
+              )}
+            </div>
           </>
         )}
       </div>

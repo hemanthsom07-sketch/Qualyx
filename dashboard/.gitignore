@@ -1,3 +1,16 @@
 node_modules
 dist
 .DS_Store
+
+# tsc -b build artifacts (tsconfig.node.json has no noEmit, so building
+# emits a compiled vite.config.js alongside .tsbuildinfo files —
+# pre-existing config gap, not fixed in this stage; ignored here so
+# neither gets committed).
+*.tsbuildinfo
+vite.config.js
+
+# Local environment overrides (see .env.example) — never commit real
+# backend URLs/secrets.
+.env
+.env.local
+.env.*.local

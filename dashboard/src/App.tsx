@@ -1,22 +1,16 @@
-import RecordedSessions from "./components/RecordedSessions";
+import { RouterProvider } from "react-router-dom";
 
-// Qualyx Dashboard — foundation shell + Recorded Sessions placeholder.
-// Intentionally does not implement project management, analytics,
-// healing-review UI, or journey visualization yet, and is NOT connected
-// to the Backend or Recorder. This exists only to verify React +
-// TypeScript + Vite + Tailwind render correctly, and to make the future
-// recording workflow understandable via an empty-state placeholder.
+import { router } from "./routes";
 
+// Qualyx Dashboard — Stage 1: routing + API client foundation.
+//
+// The static header/RecordedSessions shell from the previous foundation
+// stage now lives inside AppLayout (header/nav) and HomePage/future
+// pages respectively (RecordedSessions itself is untouched and still
+// not wired into any route — see src/components/RecordedSessions.tsx).
+// App.tsx's only job now is to hand off to the router.
 function App() {
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="text-center py-10">
-        <h1 className="text-3xl font-semibold tracking-tight">Qualyx</h1>
-        <p className="text-slate-400">Dashboard foundation — running</p>
-      </header>
-      <RecordedSessions />
-    </div>
-  );
+  return <RouterProvider router={router} />;
 }
 
 export default App;

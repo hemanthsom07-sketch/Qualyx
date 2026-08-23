@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -10,9 +10,11 @@ from app.models.test_definition import TestDefinition
 from app.schemas.diagnosis import DiagnosisOut, ExecutionResultWithDiagnosisOut, ExplanationOut
 from app.schemas.execution import ExecutionResultOut
 from app.schemas.execution_run import ExecutionRunRead
+from app.schemas.flaky_analysis import FlakyAnalysisResultOut
 from app.schemas.healing import HealingResultOut
 from app.schemas.test_definition import ExecutionPayloadCreate, TestDefinitionCreate, TestDefinitionRead
 from app.services.diagnosis_client import diagnose_and_explain
+from app.services.flaky_analysis_client import analyze_test_definition
 from app.services.healing_client import (
     build_healing_result,
     not_attempted_result,
@@ -26,6 +28,8 @@ from app.services.execution_client import (
 )
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_ANALYSIS_WINDOW = 20
 
 router = APIRouter(tags=["test-definitions"])
 
@@ -242,6 +246,65 @@ def list_execution_runs(test_id: str, db: Session = Depends(get_db)) -> list[Exe
         .order_by(ExecutionRun.created_at.desc())
         .all()
     )
+
+
+@router.get("/tests/{test_id}/analysis", response_model=FlakyAnalysisResultOut)
+def get_test_definition_analysis(
+    test_id: str,
+    window: int = Query(default=DEFAULT_ANALYSIS_WINDOW, ge=3),
+    db: Session = Depends(get_db),
+) -> FlakyAnalysisResultOut:
+    """
+    Phase 5 Stage 2: read-only flaky/recurring-failure analysis over
+    the ExecutionRun history persisted for a TestDefinition (Stages
+    1-3). Computed fresh on every request directly from
+    intelligence.flaky_analysis's existing, unmodified
+    analyze_executions() (see app/services/flaky_analysis_client.py)
+    -- no analysis logic is duplicated here, and nothing is persisted
+    or cached from this endpoint.
+
+    This endpoint is purely a read: it does not call execute_steps(),
+    diagnose_and_explain(), or any healing function, and it never
+    mutates any state -- it only queries previously-persisted
+    ExecutionRun rows and analyzes them.
+
+    `window` (default 20, minimum 3): analyzes the latest `window`
+    executions. Values below 3 are rejected with FastAPI's normal
+    query-validation 422, since the Stage 1 engine itself treats fewer
+    than 3 executions as insufficient_data -- a window that could never
+    produce a flaky verdict is rejected outright rather than silently
+    accepted. Histories with fewer than `window` executions analyze
+    every available execution; none are fabricated.
+
+    Ordering: ExecutionRun rows are queried newest-first (identical to
+    GET /tests/{test_id}/executions's own query), then reversed to
+    oldest-first by analyze_test_definition() before being handed to
+    the Intelligence engine, which requires chronological order for
+    its "pass between the earliest and latest occurrence" reasoning.
+
+    Healing statistics are read verbatim from each row's own persisted
+    healing snapshot -- an original failure that healing later fixed is
+    still counted as a failure for flakiness purposes; healing success/
+    failure counts are reported as separate, adjacent context, never
+    folded into pass/fail counts. See
+    intelligence/flaky_analysis/engine.py for the full approved
+    definitions this endpoint surfaces unmodified.
+
+    A TestDefinition that exists but has no execution history returns a
+    valid insufficient_data result, not a 404 or a fabricated execution.
+    """
+    _get_test_definition_or_404(test_id, db)
+
+    runs_newest_first = list(
+        db.query(ExecutionRun)
+        .filter(ExecutionRun.test_definition_id == test_id)
+        .order_by(ExecutionRun.created_at.desc())
+        .limit(window)
+        .all()
+    )
+
+    result = analyze_test_definition(test_id, runs_newest_first)
+    return FlakyAnalysisResultOut.model_validate(result)
 
 
 @router.post("/tests/{test_id}/execute", response_model=ExecutionResultWithDiagnosisOut)

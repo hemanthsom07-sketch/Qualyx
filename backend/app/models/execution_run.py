@@ -1,15 +1,14 @@
 """
-ExecutionRun persistence model (Execution History Stage 1 + Stage 2).
+ExecutionRun persistence model (Execution History Stage 1 + 2 + 3).
 
 Persists the raw, deterministic execution-level result for every
 POST /tests/{test_id}/execute call -- exactly what the Execution
 Engine reported (execution-engine/src/types.ts's ExecutionResult),
 mirrored the same way app/schemas/execution.py's ExecutionResultOut
-already mirrors it for the API response. Stage 1 intentionally did NOT
-persist diagnosis, explanation, or healing information. Stage 2 adds
-diagnosis and explanation as complete, verbatim snapshots (see below);
-healing persistence remains a separate, later stage (Stage 3), so this
-table still has no healing columns.
+already mirrors it for the API response. Stage 1 persisted the raw
+execution result; Stage 2 added diagnosis/explanation snapshots; Stage
+3 adds a healing snapshot (see below). Healing history retrieval
+(Stage 4) and flaky analysis remain separate, later work.
 
 Belongs to a TestDefinition through a foreign key, following the exact
 same id/timestamp/FK conventions already established by
@@ -25,14 +24,19 @@ evidence is stored as JSON exactly as it arrives from
 ExecutionResultOut.evidence.model_dump() (or None on a passing run) --
 no reinterpretation, no new shape.
 
-Stage 2: diagnosis/explanation are stored as JSON columns, not separate
-tables -- consistent with evidence's own existing precedent above, and
-appropriate for what these represent: an immutable, point-in-time
-snapshot of app/schemas/diagnosis.py's DiagnosisOut/ExplanationOut
-(themselves unmodified by this stage), not an evolving relational
-structure. Each column holds the complete schema's fields verbatim
-(via .model_dump()) -- no field subset, no new fields invented, no
-healing data included.
+Stage 2/3: diagnosis/explanation/healing are stored as JSON columns,
+not separate tables -- consistent with evidence's own existing
+precedent above, and appropriate for what these represent: an
+immutable, point-in-time snapshot of app/schemas/diagnosis.py's
+DiagnosisOut/ExplanationOut and app/schemas/healing.py's
+HealingResultOut (all three unmodified by these stages), not an
+evolving relational structure. Each column holds the complete schema's
+fields verbatim (via .model_dump()) -- no field subset, no new fields
+invented. One POST /execute call always produces exactly one
+ExecutionRun row, containing all four pieces (execution, diagnosis,
+explanation, healing) together -- never a second row for a healing
+attempt, even when healing triggers a second execute_steps() call
+internally.
 """
 
 import uuid
@@ -80,6 +84,16 @@ class ExecutionRun(Base):
     # unconditionally, so both are populated on every row today.
     diagnosis: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     explanation: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Execution History Stage 3: complete HealingResultOut snapshot,
+    # stored as JSON exactly as the live API response produced it
+    # (same field set, same values, including the nested
+    # healed_execution when a healing attempt actually re-executed).
+    # Nullable for schema robustness, matching diagnosis/explanation
+    # above, though in the route's current behavior a HealingResultOut
+    # is always produced (even a "not_attempted" one), so this is
+    # populated on every row today too.
+    healing: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # Execution Engine's own reported timing (ISO-format strings, same
     # as ExecutionResultOut.started_at/finished_at -- stored verbatim,

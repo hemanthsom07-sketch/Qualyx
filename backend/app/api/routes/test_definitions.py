@@ -49,28 +49,35 @@ def _persist_execution_run(
     result: ExecutionResultOut,
     diagnosis: DiagnosisOut,
     explanation: ExplanationOut,
+    healing: HealingResultOut,
 ) -> None:
     """
-    Execution History Stage 1 + Stage 2: persists the raw execution
-    result together with a complete, verbatim DiagnosisOut/ExplanationOut
-    snapshot (see app/models/execution_run.py). Healing is deliberately
-    NOT persisted here -- that is a separate, later stage.
+    Execution History Stage 1 + 2 + 3: persists the raw execution
+    result together with complete, verbatim DiagnosisOut/ExplanationOut/
+    HealingResultOut snapshots (see app/models/execution_run.py) --
+    all in a single row/INSERT.
 
-    Called once, after diagnosis/explanation are both available (moved
-    from Stage 1's original insertion point, which was immediately
-    after execute_steps() -- an explicitly approved change for Stage 2,
-    so the whole row can be written in a single INSERT rather than an
-    insert-then-update). Stage 1's own guarantees are unchanged: exactly
-    one row per execution, the same execution fields, non-fatal failure
-    behavior.
+    Called once, after the execution result, diagnosis, explanation,
+    AND healing are all fully available (moved again for Stage 3, from
+    Stage 2's insertion point right after diagnose_and_explain(), to
+    after the healing block -- a necessary consequence of "one
+    POST /execute call = exactly ONE ExecutionRun row containing all
+    four pieces", not an independent design choice). Stage 1/2's own
+    guarantees are unchanged: exactly one row per execution, the same
+    execution/diagnosis/explanation fields, non-fatal failure behavior.
+    Still only ever ONE row per call -- healing's own possible second
+    execute_steps() call does not produce a second ExecutionRun; its
+    outcome is folded into the same row's `healing` column (including
+    the nested `healed_execution`, when applicable).
 
     NON-FATAL by design: a persistence failure here must never turn a
     valid execution response into an HTTP 500, must never retry the
-    execution, and must never alter `result`/`diagnosis`/`explanation`
-    themselves. On failure, this rolls back the session (so it remains
-    usable for the rest of the request/future requests) and logs the
-    failure via the standard `logging` module -- no other logging
-    convention exists elsewhere in this codebase to follow instead.
+    execution or healing, and must never alter `result`/`diagnosis`/
+    `explanation`/`healing` themselves. On failure, this rolls back the
+    session (so it remains usable for the rest of the request/future
+    requests) and logs the failure via the standard `logging` module --
+    no other logging convention exists elsewhere in this codebase to
+    follow instead.
     """
     try:
         run = ExecutionRun(
@@ -83,6 +90,15 @@ def _persist_execution_run(
             evidence=result.evidence.model_dump(by_alias=True) if result.evidence is not None else None,
             diagnosis=diagnosis.model_dump(),
             explanation=explanation.model_dump(),
+            # by_alias=True: HealingResultOut's own fields have no
+            # aliases (so this has no effect on them), but its nested
+            # `healed_execution: ExecutionResultOut` field DOES use
+            # camelCase aliases (stepIndex, failedStepId, etc.) --
+            # without by_alias=True here, the stored snapshot's nested
+            # object would use snake_case while the live API response
+            # (which FastAPI serializes with aliases by default) uses
+            # camelCase, breaking "stored exactly matches live response".
+            healing=healing.model_dump(by_alias=True),
             started_at=result.started_at,
             finished_at=result.finished_at,
             duration_ms=result.duration_ms,
@@ -226,20 +242,6 @@ def execute_test_definition(test_id: str, db: Session = Depends(get_db)) -> Exec
 
     diagnosis, explanation = diagnose_and_explain(test_definition.id, test_definition.content, result)
 
-    # Execution History Stage 1 + Stage 2: persist the raw result
-    # together with a complete diagnosis/explanation snapshot, in a
-    # single row/INSERT. Non-fatal -- see _persist_execution_run()'s
-    # docstring. Deliberately only the ORIGINAL execution result (not a
-    # healed re-execution, if any happens below) -- healing persistence
-    # is a separate, later stage.
-    _persist_execution_run(
-        db,
-        test_definition.id,
-        result,
-        DiagnosisOut.model_validate(diagnosis),
-        ExplanationOut.model_validate(explanation),
-    )
-
     if diagnosis.has_failure:
         proposal, healed_steps = prepare_healing_attempt(test_definition.id, test_definition.content, diagnosis)
         if healed_steps is None:
@@ -264,6 +266,23 @@ def execute_test_definition(test_id: str, db: Session = Depends(get_db)) -> Exec
     else:
         healing_result = not_attempted_result()
 
+    healing_out = HealingResultOut.model_validate(healing_result)
+
+    # Execution History Stage 1 + 2 + 3: persist the raw result together
+    # with diagnosis/explanation/healing snapshots, in a single
+    # row/INSERT -- one POST /execute call always produces exactly one
+    # ExecutionRun, even when healing internally makes a second
+    # execute_steps() call. Non-fatal -- see _persist_execution_run()'s
+    # docstring.
+    _persist_execution_run(
+        db,
+        test_definition.id,
+        result,
+        DiagnosisOut.model_validate(diagnosis),
+        ExplanationOut.model_validate(explanation),
+        healing_out,
+    )
+
     return ExecutionResultWithDiagnosisOut(
         status=result.status,
         steps=result.steps,
@@ -277,5 +296,5 @@ def execute_test_definition(test_id: str, db: Session = Depends(get_db)) -> Exec
         evidence=result.evidence,
         diagnosis=DiagnosisOut.model_validate(diagnosis),
         explanation=ExplanationOut.model_validate(explanation),
-        healing=HealingResultOut.model_validate(healing_result),
+        healing=healing_out,
     )

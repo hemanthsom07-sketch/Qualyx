@@ -421,3 +421,314 @@ def test_stage_1_fields_persist_correctly_alongside_stage_2_snapshots(client, db
     # Alongside the new Stage 2 fields, on the exact same row.
     assert run.diagnosis is not None
     assert run.explanation is not None
+
+
+# ---------------------------------------------------------------------------
+# Execution History Stage 3: healing snapshots
+# ---------------------------------------------------------------------------
+
+# A step with genuine dual-identifier evidence (Phase 4 selector-evidence
+# milestone) -- the same shape used in test_healing_workflow.py -- so a
+# real, evidence-backed healing candidate genuinely exists.
+_STEPS_WITH_DUAL_EVIDENCE = [
+    {"id": "gen-nav-1", "type": "navigate", "url": "https://shop.test/"},
+    {
+        "id": "gen-click-1",
+        "type": "click",
+        "selector": "#checkout-button",
+        "selectorKind": "id",
+        "stableElementId": "checkout-button",
+        "stableDataTestId": "checkout-submit",
+    },
+]
+
+# A step with a selectorKind but only ONE known identifier -- eligible,
+# but genuinely no second piece of evidence exists.
+_STEPS_WITH_SINGLE_EVIDENCE = [
+    {"id": "gen-nav-1", "type": "navigate", "url": "https://shop.test/"},
+    {
+        "id": "gen-click-1",
+        "type": "click",
+        "selector": "#checkout-button",
+        "selectorKind": "id",
+        "stableElementId": "checkout-button",
+    },
+]
+
+_SELECTOR_NOT_FOUND_ERROR = 'page.click: waiting for locator("#checkout-button") failed: element not found'
+
+
+def _dual_evidence_failure() -> ExecutionResultOut:
+    return ExecutionResultOut.model_validate(
+        {
+            "status": "failed",
+            "steps": [
+                {"stepIndex": 0, "type": "navigate", "status": "passed", "durationMs": 50},
+                {
+                    "stepIndex": 1,
+                    "id": "gen-click-1",
+                    "type": "click",
+                    "status": "failed",
+                    "durationMs": 10,
+                    "error": _SELECTOR_NOT_FOUND_ERROR,
+                },
+            ],
+            "failedStepIndex": 1,
+            "failedStepId": "gen-click-1",
+            "error": _SELECTOR_NOT_FOUND_ERROR,
+            "executedStepCount": 2,
+            "startedAt": "2026-01-01T00:00:00.000Z",
+            "finishedAt": "2026-01-01T00:00:00.100Z",
+            "durationMs": 100,
+            "evidence": {
+                "failedStepId": "gen-click-1",
+                "failedStepIndex": 1,
+                "stepType": "click",
+                "action": {"selector": "#checkout-button"},
+                "errorMessage": _SELECTOR_NOT_FOUND_ERROR,
+                "errorCategory": "unknown",
+                "pageUrl": "https://shop.test/",
+                "httpStatus": None,
+                "executedStepCount": 2,
+                "stepDurationMs": 10,
+            },
+        }
+    )
+
+
+def _healed_passing_result() -> ExecutionResultOut:
+    return ExecutionResultOut.model_validate(
+        {
+            "status": "passed",
+            "steps": [
+                {"stepIndex": 0, "type": "navigate", "status": "passed", "durationMs": 50},
+                {"stepIndex": 1, "id": "gen-click-1", "type": "click", "status": "passed", "durationMs": 10},
+            ],
+            "failedStepIndex": None,
+            "failedStepId": None,
+            "error": None,
+            "executedStepCount": 2,
+            "startedAt": "2026-01-01T00:00:00.000Z",
+            "finishedAt": "2026-01-01T00:00:00.100Z",
+            "durationMs": 100,
+            "evidence": None,
+        }
+    )
+
+
+# --- 1: a passing execution stores healing information ---
+
+
+def test_passing_execution_stores_healing_information(client, db_session):
+    project_id = _create_project(client)
+    test_id = _create_test_definition(client, project_id)
+
+    with patch("app.api.routes.test_definitions.execute_steps", return_value=_passing_result()):
+        client.post(f"/tests/{test_id}/execute")
+
+    run = db_session.query(ExecutionRun).one()
+    assert run.healing is not None
+    assert run.healing["status"] == "not_attempted"
+    assert run.healing["applied"] is False
+
+
+# --- 2: a failing execution with no healing stores the correct snapshot,
+#        per the ACTUAL real contract (verified, not assumed) ---
+
+
+def test_failing_execution_without_selector_kind_stores_not_eligible(client, db_session):
+    # This file's default test-definition content has a step with a
+    # selector but no selectorKind at all -- per the real, current
+    # eligibility contract (intelligence/healing/engine.py's
+    # determine_eligibility(), unmodified by this stage), that is
+    # NOT eligible: healing cannot safely determine what kind of
+    # replacement to look for without a known selector_kind.
+    project_id = _create_project(client)
+    test_id = _create_test_definition(client, project_id)  # default content, no selectorKind
+
+    with patch("app.api.routes.test_definitions.execute_steps", return_value=_failing_result()):
+        client.post(f"/tests/{test_id}/execute")
+
+    run = db_session.query(ExecutionRun).one()
+    assert run.healing["status"] == "not_eligible"
+    assert run.healing["applied"] is False
+
+
+def test_failing_execution_with_single_identifier_stores_no_candidate(client, db_session):
+    # Eligible (real selectorKind present), but genuinely only one
+    # stable identifier is known -- the real contract's honest answer
+    # is no_candidate, not a fabricated one.
+    project_id = _create_project(client)
+    test_id = _create_test_definition(client, project_id, _STEPS_WITH_SINGLE_EVIDENCE)
+
+    with patch("app.api.routes.test_definitions.execute_steps", return_value=_dual_evidence_failure()):
+        client.post(f"/tests/{test_id}/execute")
+
+    run = db_session.query(ExecutionRun).one()
+    assert run.healing["status"] == "no_candidate"
+    assert run.healing["applied"] is False
+    assert run.healing["proposed_selector"] is None
+
+
+# --- 3: a successful automatic healing attempt stores status="healed" ---
+
+
+def test_successful_healing_attempt_stores_status_healed(client, db_session):
+    project_id = _create_project(client)
+    test_id = _create_test_definition(client, project_id, _STEPS_WITH_DUAL_EVIDENCE)
+
+    with patch(
+        "app.api.routes.test_definitions.execute_steps",
+        side_effect=[_dual_evidence_failure(), _healed_passing_result()],
+    ) as mock_execute:
+        client.post(f"/tests/{test_id}/execute")
+
+    run = db_session.query(ExecutionRun).one()
+    assert run.healing["status"] == "healed"
+    assert run.healing["applied"] is True
+    assert run.healing["proposed_selector"] == '[data-testid="checkout-submit"]'
+    assert run.healing["healed_execution"]["status"] == "passed"
+    # Still exactly ONE ExecutionRun row despite TWO execute_steps() calls.
+    assert mock_execute.call_count == 2
+    assert db_session.query(ExecutionRun).count() == 1
+
+
+# --- 4: a failed healing re-execution stores status="healing_failed" ---
+
+
+def test_failed_healing_reexecution_stores_status_healing_failed(client, db_session):
+    project_id = _create_project(client)
+    test_id = _create_test_definition(client, project_id, _STEPS_WITH_DUAL_EVIDENCE)
+
+    healed_still_fails = _dual_evidence_failure()
+
+    with patch(
+        "app.api.routes.test_definitions.execute_steps",
+        side_effect=[_dual_evidence_failure(), healed_still_fails],
+    ) as mock_execute:
+        client.post(f"/tests/{test_id}/execute")
+
+    run = db_session.query(ExecutionRun).one()
+    assert run.healing["status"] == "healing_failed"
+    assert run.healing["applied"] is True
+    assert run.healing["healed_execution"]["status"] == "failed"
+    # Maximum ONE healing attempt: exactly two execute_steps() calls
+    # total (original + one healing attempt), never a third even though
+    # the healed run also failed with what looks like another
+    # selector-type error.
+    assert mock_execute.call_count == 2
+    assert db_session.query(ExecutionRun).count() == 1
+
+
+# --- 5: stored healing exactly matches the live healing response ---
+
+
+def test_stored_healing_exactly_matches_live_response_healing(client, db_session):
+    project_id = _create_project(client)
+    test_id = _create_test_definition(client, project_id, _STEPS_WITH_DUAL_EVIDENCE)
+
+    with patch(
+        "app.api.routes.test_definitions.execute_steps",
+        side_effect=[_dual_evidence_failure(), _healed_passing_result()],
+    ):
+        response = client.post(f"/tests/{test_id}/execute")
+
+    live_healing = response.json()["healing"]
+    run = db_session.query(ExecutionRun).one()
+
+    assert run.healing == live_healing
+
+
+# --- 6: multiple executions create independent healing snapshots ---
+
+
+def test_multiple_executions_create_independent_healing_snapshots(client, db_session):
+    project_id = _create_project(client)
+    test_id = _create_test_definition(client, project_id, _STEPS_WITH_DUAL_EVIDENCE)
+
+    with patch(
+        "app.api.routes.test_definitions.execute_steps",
+        side_effect=[
+            _passing_result(),  # run 1: passes, no healing attempted
+            _dual_evidence_failure(),
+            _healed_passing_result(),  # run 2: fails, then heals successfully
+        ],
+    ):
+        client.post(f"/tests/{test_id}/execute")
+        client.post(f"/tests/{test_id}/execute")
+
+    runs = (
+        db_session.query(ExecutionRun)
+        .filter(ExecutionRun.test_definition_id == test_id)
+        .order_by(ExecutionRun.created_at.asc())
+        .all()
+    )
+    assert len(runs) == 2
+    assert runs[0].healing["status"] == "not_attempted"
+    assert runs[1].healing["status"] == "healed"
+    assert runs[0].id != runs[1].id
+
+
+# --- 7: persistence failure remains non-fatal when healing is present ---
+
+
+def test_persistence_failure_is_non_fatal_when_healing_attempted(client, db_session):
+    project_id = _create_project(client)
+    test_id = _create_test_definition(client, project_id, _STEPS_WITH_DUAL_EVIDENCE)
+
+    with patch(
+        "app.api.routes.test_definitions.execute_steps",
+        side_effect=[_dual_evidence_failure(), _healed_passing_result()],
+    ), patch(
+        "app.api.routes.test_definitions.ExecutionRun",
+        side_effect=RuntimeError("simulated persistence failure"),
+    ):
+        response = client.post(f"/tests/{test_id}/execute")
+
+    # The execution/diagnosis/explanation/healing response must still
+    # succeed and be fully correct, exactly as if persistence had never
+    # been attempted.
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "failed"
+    assert body["diagnosis"]["has_failure"] is True
+    assert body["explanation"]["has_failure"] is True
+    assert body["healing"]["status"] == "healed"
+
+    # And genuinely nothing was persisted.
+    assert db_session.query(ExecutionRun).count() == 0
+
+
+# --- 8: existing /execute response remains unchanged ---
+
+
+def test_execute_response_shape_unchanged_when_healing_is_persisted(client):
+    project_id = _create_project(client)
+    test_id = _create_test_definition(client, project_id, _STEPS_WITH_DUAL_EVIDENCE)
+
+    with patch(
+        "app.api.routes.test_definitions.execute_steps",
+        side_effect=[_dual_evidence_failure(), _healed_passing_result()],
+    ):
+        response = client.post(f"/tests/{test_id}/execute")
+
+    assert response.status_code == 200
+    body = response.json()
+    # Every field from before this stage is still present and correct;
+    # nothing about the response shape changed, and no new top-level
+    # history-related field was added to the response.
+    assert set(body.keys()) == {
+        "status",
+        "steps",
+        "failedStepIndex",
+        "failedStepId",
+        "error",
+        "executedStepCount",
+        "startedAt",
+        "finishedAt",
+        "durationMs",
+        "evidence",
+        "diagnosis",
+        "explanation",
+        "healing",
+    }

@@ -96,16 +96,25 @@ function TestDetailPage() {
                   <p className="mt-1 text-sm text-slate-400">{testState.data.description}</p>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={handleExecute}
-                disabled={isRunning}
-                aria-label={isRunning ? "Test is currently running" : "Execute this test"}
-                data-testid="execute-button"
-                className="shrink-0 rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
-              >
-                {isRunning ? "Running…" : "Execute test"}
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <Link
+                  to={`/tests/${testId}/history`}
+                  data-testid="view-history-link"
+                  className="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 hover:text-slate-100"
+                >
+                  View history
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleExecute}
+                  disabled={isRunning}
+                  aria-label={isRunning ? "Test is currently running" : "Execute this test"}
+                  data-testid="execute-button"
+                  className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
+                >
+                  {isRunning ? "Running…" : "Execute test"}
+                </button>
+              </div>
             </div>
 
             <h3 className="mt-6 text-sm font-medium text-slate-400 uppercase tracking-wide mb-3">

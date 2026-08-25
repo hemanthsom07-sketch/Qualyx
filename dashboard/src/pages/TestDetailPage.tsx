@@ -98,6 +98,13 @@ function TestDetailPage() {
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <Link
+                  to={`/tests/${testId}/analysis`}
+                  data-testid="view-analysis-link"
+                  className="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 hover:text-slate-100"
+                >
+                  View analysis
+                </Link>
+                <Link
                   to={`/tests/${testId}/history`}
                   data-testid="view-history-link"
                   className="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 hover:text-slate-100"

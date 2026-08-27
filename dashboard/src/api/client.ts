@@ -82,6 +82,18 @@ export function listProjects(): Promise<Project[]> {
   return request<Project[]>("/projects");
 }
 
+export interface CreateProjectInput {
+  name: string;
+  description?: string | null;
+}
+
+export function createProject(input: CreateProjectInput): Promise<Project> {
+  return request<Project>("/projects", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export function getProject(projectId: string): Promise<Project> {
   return request<Project>(`/projects/${projectId}`);
 }

@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { listProjects } from "../api/client";
+import { CreateProjectForm } from "../components/CreateProjectForm";
 import { StateBlock } from "../components/StateBlock";
 import { useAsync } from "../hooks/useAsync";
 
@@ -8,12 +10,22 @@ import { useAsync } from "../hooks/useAsync";
 // API client. Data fetching/loading/error state is handled by the
 // shared useAsync hook; this component only renders the three
 // resulting states.
+//
+// Stage 6 adds project creation (POST /projects). useAsync has no
+// built-in refetch, so a `refreshKey` dependency is used to trigger a
+// fresh GET /projects after a successful create -- a real round trip
+// to the canonical server state, rather than optimistically splicing
+// an unconfirmed project into local state.
 function ProjectsPage() {
-  const state = useAsync(() => listProjects(), []);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const state = useAsync(() => listProjects(), [refreshKey]);
 
   return (
     <section className="max-w-4xl mx-auto px-6 py-10">
-      <h2 className="text-lg font-medium mb-6">Projects</h2>
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <h2 className="text-lg font-medium">Projects</h2>
+        <CreateProjectForm onCreated={() => setRefreshKey((key) => key + 1)} />
+      </div>
 
       {state.status === "loading" && (
         <StateBlock>Loading projects…</StateBlock>

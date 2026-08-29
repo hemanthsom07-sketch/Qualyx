@@ -10,6 +10,21 @@ import { StatusBadge } from "./StatusBadge";
 
 interface ExecutionHistoryRecordProps {
   run: ExecutionRun;
+  /**
+   * Stage 10: true when this record is the target of a
+   * /tests/:testId/history#<run.id> link from Recurring Failure
+   * Signatures (see RecurringSignaturesList/TestAnalysisPage) --
+   * visually emphasizes the row and starts it expanded, since that's
+   * exactly the record the user followed a link to inspect.
+   */
+  highlighted?: boolean;
+}
+
+// DOM anchor id shared between this component (the target) and
+// RecurringSignaturesList (the link source) -- kept in one place so
+// the two can never drift out of sync with each other.
+export function executionAnchorId(runId: string): string {
+  return `execution-${runId}`;
 }
 
 // Note on scope: ExecutionRun (backend/app/models/execution_run.py)
@@ -22,15 +37,18 @@ interface ExecutionHistoryRecordProps {
 // nested `healed_execution` DOES include a full step list, since
 // that's a verbatim copy of a live ExecutionResultOut -- HealingCard
 // below renders it exactly as it does on Test Detail.)
-export function ExecutionHistoryRecord({ run }: ExecutionHistoryRecordProps) {
-  const [expanded, setExpanded] = useState(false);
+export function ExecutionHistoryRecord({ run, highlighted = false }: ExecutionHistoryRecordProps) {
+  const [expanded, setExpanded] = useState(highlighted);
 
   const hasDetail = Boolean(run.evidence || run.diagnosis || run.explanation || run.healing);
 
   return (
     <li
+      id={executionAnchorId(run.id)}
       data-testid="execution-history-record"
-      className="rounded-lg border border-slate-800 bg-slate-900/50"
+      className={`rounded-lg border bg-slate-900/50 ${
+        highlighted ? "border-emerald-700 ring-1 ring-emerald-700/50" : "border-slate-800"
+      }`}
     >
       <button
         type="button"
@@ -52,6 +70,7 @@ export function ExecutionHistoryRecord({ run }: ExecutionHistoryRecordProps) {
             {hasDetail && <span className="text-slate-500">{expanded ? "▲" : "▼"}</span>}
           </div>
         </div>
+        <p className="mt-1 font-mono text-xs text-slate-600 break-all">{run.id}</p>
         {run.failed_step_id !== null && (
           <p className="mt-1 text-sm text-slate-400">
             Failed step: <span className="text-slate-300">{run.failed_step_id}</span>

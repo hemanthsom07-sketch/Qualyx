@@ -1,7 +1,8 @@
-import { Link, useParams } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
 
 import { getTestDefinition, listExecutionRuns } from "../api/client";
-import { ExecutionHistoryRecord } from "../components/ExecutionHistoryRecord";
+import { ExecutionHistoryRecord, executionAnchorId } from "../components/ExecutionHistoryRecord";
 import { StateBlock } from "../components/StateBlock";
 import { useAsync } from "../hooks/useAsync";
 
@@ -11,11 +12,25 @@ import { useAsync } from "../hooks/useAsync";
 // separately just to show its name/back-link -- its own loading/error
 // state doesn't block the history list from rendering, matching the
 // same "independent fetches" pattern ProjectDetailPage already uses.
+//
+// Stage 10: supports being linked to directly at
+// #execution-<run.id> (from RecurringSignaturesList on the Analysis
+// page) -- the target record is highlighted and scrolled into view.
+// This has to happen in an effect rather than relying on the browser's
+// native anchor-scroll, since the list doesn't exist in the DOM until
+// after the async fetch resolves.
 function TestHistoryPage() {
   const { testId } = useParams<{ testId: string }>();
+  const location = useLocation();
+  const highlightedId = location.hash ? location.hash.slice(1) : null;
 
   const testState = useAsync(() => getTestDefinition(testId as string), [testId]);
   const historyState = useAsync(() => listExecutionRuns(testId as string), [testId]);
+
+  useEffect(() => {
+    if (!highlightedId || historyState.status !== "success") return;
+    document.getElementById(highlightedId)?.scrollIntoView({ block: "center" });
+  }, [highlightedId, historyState.status]);
 
   return (
     <section className="max-w-3xl mx-auto px-6 py-10">
@@ -56,7 +71,11 @@ function TestHistoryPage() {
           {[...historyState.data]
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
             .map((run) => (
-              <ExecutionHistoryRecord key={run.id} run={run} />
+              <ExecutionHistoryRecord
+                key={run.id}
+                run={run}
+                highlighted={highlightedId === executionAnchorId(run.id)}
+              />
             ))}
         </ul>
       )}

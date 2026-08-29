@@ -115,7 +115,10 @@ function TestAnalysisPage() {
               <h3 className="mb-2 text-sm font-medium text-slate-400 uppercase tracking-wide">
                 Recurring failure signatures
               </h3>
-              <RecurringSignaturesList signatures={analysisState.data.recurring_signatures} />
+              <RecurringSignaturesList
+                signatures={analysisState.data.recurring_signatures}
+                testId={testId as string}
+              />
             </div>
           )}
         </div>

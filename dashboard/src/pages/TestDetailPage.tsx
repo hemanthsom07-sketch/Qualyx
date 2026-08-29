@@ -14,13 +14,22 @@ import { useAsync } from "../hooks/useAsync";
 // Record<string, unknown>[] -- see ../api/types.ts's comment on why:
 // the read path returns raw stored dicts, not the validated step
 // union) without assuming any field is present.
+//
+// Stage 9: fill steps also carry a `value` field (backend/app/schemas/
+// test_definition.py: FillStep.value) -- previously read but never
+// shown, so a fill step displayed only its selector with no indication
+// of what text was actually being entered.
 function describeStep(step: Record<string, unknown>): string {
   const type = typeof step.type === "string" ? step.type : "step";
   const target =
     (typeof step.url === "string" && step.url) ||
     (typeof step.selector === "string" && step.selector) ||
     null;
-  return target ? `${type} — ${target}` : type;
+  const value = typeof step.value === "string" ? step.value : null;
+
+  if (!target) return type;
+  if (type === "fill" && value !== null) return `${type} — ${target} → "${value}"`;
+  return `${type} — ${target}`;
 }
 
 // Execution is user-triggered (not a mount-time fetch), so it's tracked

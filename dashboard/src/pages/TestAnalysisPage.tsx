@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { getTestAnalysis, getTestDefinition } from "../api/client";
@@ -7,16 +8,35 @@ import { RecurringSignaturesList } from "../components/RecurringSignaturesList";
 import { StateBlock } from "../components/StateBlock";
 import { useAsync } from "../hooks/useAsync";
 
+// Backend contract (backend/app/api/routes/test_definitions.py):
+// GET /tests/{id}/analysis?window=N, default 20, rejects N < 3 with a
+// 422 (the flaky-analysis engine itself treats fewer than 3 executions
+// as insufficient_data, so the route never accepts a window that could
+// never produce a verdict). These four presets are all >= 3 by
+// construction, so no client-side validation/error handling for that
+// case is needed here.
+const WINDOW_OPTIONS = [5, 10, 20, 50] as const;
+const DEFAULT_WINDOW = 20;
+
 // Stage 5: flaky/recurring analysis, backed by GET /tests/{test_id}/analysis
 // via the existing (unmodified) getTestAnalysis() client function.
 // insufficient_data is a normal, valid analysis result -- not an error
 // state -- and is handled entirely inside AnalysisSummary/this page's
 // success branch, not as a separate error UI.
+//
+// Stage 8 exposes the endpoint's existing `window` query param (already
+// supported by getTestAnalysis()'s options since Stage 1, but never
+// surfaced in the UI) as a preset selector, so a user can compare the
+// flakiness verdict across different amounts of recent history.
 function TestAnalysisPage() {
   const { testId } = useParams<{ testId: string }>();
+  const [window, setWindow] = useState<number>(DEFAULT_WINDOW);
 
   const testState = useAsync(() => getTestDefinition(testId as string), [testId]);
-  const analysisState = useAsync(() => getTestAnalysis(testId as string), [testId]);
+  const analysisState = useAsync(
+    () => getTestAnalysis(testId as string, { window }),
+    [testId, window]
+  );
 
   return (
     <section className="max-w-3xl mx-auto px-6 py-10">
@@ -38,6 +58,26 @@ function TestAnalysisPage() {
         >
           View history
         </Link>
+      </div>
+
+      <div className="mb-4 flex items-center gap-2 text-sm">
+        <label htmlFor="analysis-window" className="text-slate-400">
+          Analyze last
+        </label>
+        <select
+          id="analysis-window"
+          data-testid="analysis-window-select"
+          value={window}
+          onChange={(event) => setWindow(Number(event.target.value))}
+          className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-slate-200 focus:border-slate-500 focus:outline-none"
+        >
+          {WINDOW_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+        <span className="text-slate-400">executions</span>
       </div>
 
       {analysisState.status === "loading" && <StateBlock>Loading analysis…</StateBlock>}

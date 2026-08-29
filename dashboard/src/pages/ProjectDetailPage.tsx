@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { getProject, listTestDefinitions } from "../api/client";
+import { CreateTestForm } from "../components/CreateTestForm";
 import { StateBlock } from "../components/StateBlock";
 import { useAsync } from "../hooks/useAsync";
 
@@ -8,11 +10,21 @@ import { useAsync } from "../hooks/useAsync";
 // (GET /projects/{id}/tests), both via the Stage 1 API client. The two
 // resources are fetched independently so a failure/empty state in one
 // doesn't block the other from rendering.
+//
+// Stage 7 adds test creation (POST /projects/{id}/tests). Same
+// refresh-key pattern as Stage 6's project creation: useAsync has no
+// built-in refetch, so a successful create bumps `refreshKey` to
+// trigger a fresh GET rather than optimistically splicing an
+// unconfirmed test into local state.
 function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const projectState = useAsync(() => getProject(projectId as string), [projectId]);
-  const testsState = useAsync(() => listTestDefinitions(projectId as string), [projectId]);
+  const testsState = useAsync(
+    () => listTestDefinitions(projectId as string),
+    [projectId, refreshKey]
+  );
 
   return (
     <section className="max-w-4xl mx-auto px-6 py-10">
@@ -41,9 +53,14 @@ function ProjectDetailPage() {
         )}
       </div>
 
-      <h3 className="text-sm font-medium text-slate-400 uppercase tracking-wide mb-3">
-        Tests
-      </h3>
+      <div className="mb-3 flex items-center justify-between gap-4">
+        <h3 className="text-sm font-medium text-slate-400 uppercase tracking-wide">
+          Tests
+        </h3>
+        {projectId && (
+          <CreateTestForm projectId={projectId} onCreated={() => setRefreshKey((key) => key + 1)} />
+        )}
+      </div>
 
       {testsState.status === "loading" && <StateBlock>Loading tests…</StateBlock>}
 

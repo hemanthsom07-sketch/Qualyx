@@ -106,6 +106,35 @@ export function listTestDefinitions(projectId: string): Promise<TestDefinition[]
   return request<TestDefinition[]>(`/projects/${projectId}/tests`);
 }
 
+// Mirrors backend/app/schemas/test_definition.py's Step union exactly
+// (navigate/click/fill) -- the only three step types the backend
+// accepts. `id`/`selectorKind`/`stableElementId`/`stableDataTestId` are
+// all optional pass-through fields on click/fill in the real schema,
+// but this manual-creation form only ever sends what a human actually
+// fills in (type + url, or type + selector [+ value]) -- it never
+// fabricates ids or selector-evidence fields that only Intelligence's
+// automated payloads would populate.
+export type CreateTestStepInput =
+  | { type: "navigate"; url: string }
+  | { type: "click"; selector: string }
+  | { type: "fill"; selector: string; value: string };
+
+export interface CreateTestDefinitionInput {
+  name: string;
+  description?: string | null;
+  content: CreateTestStepInput[];
+}
+
+export function createTestDefinition(
+  projectId: string,
+  input: CreateTestDefinitionInput
+): Promise<TestDefinition> {
+  return request<TestDefinition>(`/projects/${projectId}/tests`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export function getTestDefinition(testId: string): Promise<TestDefinition> {
   return request<TestDefinition>(`/tests/${testId}`);
 }

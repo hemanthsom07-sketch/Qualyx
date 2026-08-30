@@ -3,6 +3,11 @@ import { useState } from "react";
 import { ApiError, createProject } from "../api/client";
 
 interface CreateProjectFormProps {
+  /** Controlled from the parent so multiple entry points (header action,
+   *  empty-state CTA) can open the same form instance instead of each
+   *  needing their own. */
+  isOpen: boolean;
+  onOpenChange: (isOpen: boolean) => void;
   /** Called after a project is successfully created, so the caller can refresh its list. */
   onCreated: () => void;
 }
@@ -10,8 +15,11 @@ interface CreateProjectFormProps {
 // Backend contract (backend/app/schemas/project.py: ProjectCreate):
 // name required (1-255 chars), description optional (up to 2000 chars).
 // This form mirrors exactly that -- no extra fields invented.
-export function CreateProjectForm({ onCreated }: CreateProjectFormProps) {
-  const [isOpen, setIsOpen] = useState(false);
+//
+// Stage 14: open/closed state moved from internal to a controlled prop
+// so ProjectsPage's empty-state "+ Create project" CTA can open this
+// same form rather than needing a second, duplicate form.
+export function CreateProjectForm({ isOpen, onOpenChange, onCreated }: CreateProjectFormProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -31,7 +39,7 @@ export function CreateProjectForm({ onCreated }: CreateProjectFormProps) {
       });
       setName("");
       setDescription("");
-      setIsOpen(false);
+      onOpenChange(false);
       onCreated();
     } catch (err) {
       const message =
@@ -46,9 +54,9 @@ export function CreateProjectForm({ onCreated }: CreateProjectFormProps) {
     return (
       <button
         type="button"
-        onClick={() => setIsOpen(true)}
+        onClick={() => onOpenChange(true)}
         data-testid="new-project-button"
-        className="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 hover:text-slate-100"
+        className="shrink-0 rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
       >
         + New project
       </button>
@@ -102,18 +110,18 @@ export function CreateProjectForm({ onCreated }: CreateProjectFormProps) {
           type="submit"
           disabled={submitting || !name.trim()}
           data-testid="create-project-submit"
-          className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
+          className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
         >
           {submitting ? "Creating…" : "Create project"}
         </button>
         <button
           type="button"
           onClick={() => {
-            setIsOpen(false);
+            onOpenChange(false);
             setError(null);
           }}
           disabled={submitting}
-          className="rounded-md px-4 py-2 text-sm text-slate-400 hover:text-slate-200"
+          className="rounded-md px-4 py-2 text-sm text-slate-400 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
         >
           Cancel
         </button>

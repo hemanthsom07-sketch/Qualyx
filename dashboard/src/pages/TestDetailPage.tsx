@@ -158,7 +158,7 @@ function TestDetailPage() {
             <div className="mt-8 space-y-4">
               {isRunning && (
                 <StateBlock>
-                  <span role="status">Running test — this may take a few seconds…</span>
+                  Running test — this may take a few seconds…
                 </StateBlock>
               )}
 

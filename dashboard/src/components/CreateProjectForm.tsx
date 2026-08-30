@@ -91,7 +91,11 @@ export function CreateProjectForm({ onCreated }: CreateProjectFormProps) {
         />
       </div>
 
-      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-3 text-sm text-red-400">
+          {error}
+        </p>
+      )}
 
       <div className="mt-4 flex items-center gap-2">
         <button

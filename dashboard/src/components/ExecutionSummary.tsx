@@ -15,6 +15,12 @@ interface ExecutionSummaryProps {
 // status, timing, executed step count, failed step identity, the full
 // step list, and failure evidence when present. Reused for both the
 // top-level execution and, via HealingCard, the nested healed_execution.
+//
+// Stage 11: started/finished now render full date+time (toLocaleString,
+// matching ExecutionHistoryRecord's convention) rather than time-only --
+// this component is also reused inside HealingCard for a "healed
+// re-execution" shown when a *past* history record is expanded, where a
+// bare time-of-day is ambiguous without the day it happened on.
 export function ExecutionSummary({ result, heading = "Execution result" }: ExecutionSummaryProps) {
   return (
     <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
@@ -34,11 +40,11 @@ export function ExecutionSummary({ result, heading = "Execution result" }: Execu
         </div>
         <div>
           <dt className="text-slate-500">Started</dt>
-          <dd className="text-slate-300">{new Date(result.startedAt).toLocaleTimeString()}</dd>
+          <dd className="text-slate-300">{new Date(result.startedAt).toLocaleString()}</dd>
         </div>
         <div>
           <dt className="text-slate-500">Finished</dt>
-          <dd className="text-slate-300">{new Date(result.finishedAt).toLocaleTimeString()}</dd>
+          <dd className="text-slate-300">{new Date(result.finishedAt).toLocaleString()}</dd>
         </div>
       </dl>
 

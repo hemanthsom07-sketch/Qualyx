@@ -4,6 +4,11 @@ import { ApiError, createTestDefinition, type CreateTestStepInput } from "../api
 
 interface CreateTestFormProps {
   projectId: string;
+  /** Controlled from the parent so multiple entry points (header action,
+   *  empty-state CTA) can open the same form instance instead of each
+   *  needing their own. */
+  isOpen: boolean;
+  onOpenChange: (isOpen: boolean) => void;
   /** Called after a test is successfully created, so the caller can refresh its list. */
   onCreated: () => void;
 }
@@ -26,8 +31,12 @@ function emptyStep(type: DraftStep["type"]): DraftStep {
 // nothing from the schema's automated-ingestion fields (id,
 // selectorKind, stableElementId, stableDataTestId) is exposed, since a
 // human filling out this form has no meaningful value to put in them.
-export function CreateTestForm({ projectId, onCreated }: CreateTestFormProps) {
-  const [isOpen, setIsOpen] = useState(false);
+//
+// Stage 15: open/closed state moved from internal to a controlled prop
+// (mirroring CreateProjectForm's Stage 14 change) so ProjectDetailPage's
+// empty-state "+ Create test" CTA can open this same form rather than
+// needing a second, duplicate form.
+export function CreateTestForm({ projectId, isOpen, onOpenChange, onCreated }: CreateTestFormProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [steps, setSteps] = useState<DraftStep[]>([emptyStep("navigate")]);
@@ -84,7 +93,7 @@ export function CreateTestForm({ projectId, onCreated }: CreateTestFormProps) {
         content,
       });
       reset();
-      setIsOpen(false);
+      onOpenChange(false);
       onCreated();
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Couldn't create the test.";
@@ -98,9 +107,9 @@ export function CreateTestForm({ projectId, onCreated }: CreateTestFormProps) {
     return (
       <button
         type="button"
-        onClick={() => setIsOpen(true)}
+        onClick={() => onOpenChange(true)}
         data-testid="new-test-button"
-        className="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 hover:text-slate-100"
+        className="shrink-0 rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
       >
         + New test
       </button>
@@ -246,18 +255,18 @@ export function CreateTestForm({ projectId, onCreated }: CreateTestFormProps) {
           type="submit"
           disabled={submitting || !isValid}
           data-testid="create-test-submit"
-          className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
+          className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
         >
           {submitting ? "Creating…" : "Create test"}
         </button>
         <button
           type="button"
           onClick={() => {
-            setIsOpen(false);
+            onOpenChange(false);
             setError(null);
           }}
           disabled={submitting}
-          className="rounded-md px-4 py-2 text-sm text-slate-400 hover:text-slate-200"
+          className="rounded-md px-4 py-2 text-sm text-slate-400 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
         >
           Cancel
         </button>

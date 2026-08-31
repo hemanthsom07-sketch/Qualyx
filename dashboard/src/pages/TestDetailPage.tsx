@@ -72,6 +72,17 @@ function TestDetailPage() {
       // execution response whose `status` happens to be "failed" -- the
       // latter is handled entirely inside the "success" branch below,
       // via ExecutionSummary's own PASS/FAIL badge, not here.
+      //
+      // Stage 17: DiagnosisCard/HealingCard below are only rendered
+      // when they have something to say -- has_failure and
+      // status !== "not_attempted" are the backend's own "nothing
+      // happened" defaults on a passing run (see
+      // backend/app/schemas/diagnosis.py's docstring on `healing`), so
+      // rendering them unconditionally meant every single passing
+      // execution (the common case) produced two extra cards of pure
+      // clutter ("No failure diagnosed." / "NOT ATTEMPTED").
+      // ExplanationCard stays unconditional since its headline already
+      // conveys the pass/fail summary either way.
       const message =
         err instanceof ApiError ? err.message : "The execution request failed unexpectedly.";
       setExecutionState({ status: "error", message });
@@ -172,8 +183,12 @@ function TestDetailPage() {
                 <>
                   <ExecutionSummary result={executionState.data} />
                   <ExplanationCard explanation={executionState.data.explanation} />
-                  <DiagnosisCard diagnosis={executionState.data.diagnosis} />
-                  <HealingCard healing={executionState.data.healing} />
+                  {executionState.data.diagnosis.has_failure && (
+                    <DiagnosisCard diagnosis={executionState.data.diagnosis} />
+                  )}
+                  {executionState.data.healing.status !== "not_attempted" && (
+                    <HealingCard healing={executionState.data.healing} />
+                  )}
                 </>
               )}
             </div>

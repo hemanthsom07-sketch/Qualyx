@@ -37,6 +37,12 @@ export function executionAnchorId(runId: string): string {
 // nested `healed_execution` DOES include a full step list, since
 // that's a verbatim copy of a live ExecutionResultOut -- HealingCard
 // below renders it exactly as it does on Test Detail.)
+//
+// Stage 17: DiagnosisCard/HealingCard are only shown when they have
+// something to say (has_failure / status !== "not_attempted") --
+// mirrors the same fix applied to TestDetailPage's live result, so
+// expanding a passing historical run doesn't surface two "nothing
+// happened" cards.
 export function ExecutionHistoryRecord({ run, highlighted = false }: ExecutionHistoryRecordProps) {
   const [expanded, setExpanded] = useState(highlighted);
 
@@ -83,9 +89,11 @@ export function ExecutionHistoryRecord({ run, highlighted = false }: ExecutionHi
       {expanded && (
         <div className="space-y-3 border-t border-slate-800 px-4 py-3">
           {run.explanation && <ExplanationCard explanation={run.explanation} />}
-          {run.diagnosis && <DiagnosisCard diagnosis={run.diagnosis} />}
+          {run.diagnosis?.has_failure && <DiagnosisCard diagnosis={run.diagnosis} />}
           {run.evidence && <FailureEvidenceCard evidence={run.evidence} />}
-          {run.healing && <HealingCard healing={run.healing} />}
+          {run.healing && run.healing.status !== "not_attempted" && (
+            <HealingCard healing={run.healing} />
+          )}
         </div>
       )}
     </li>

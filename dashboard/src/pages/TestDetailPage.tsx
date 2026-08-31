@@ -83,7 +83,7 @@ function TestDetailPage() {
       {testState.status === "success" && (
         <Link
           to={`/projects/${testState.data.project_id}`}
-          className="text-sm text-slate-400 hover:text-slate-200"
+          className="text-sm text-slate-400 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 rounded"
         >
           ← Project
         </Link>
@@ -109,14 +109,14 @@ function TestDetailPage() {
                 <Link
                   to={`/tests/${testId}/analysis`}
                   data-testid="view-analysis-link"
-                  className="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 hover:text-slate-100"
+                  className="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 hover:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                 >
                   View analysis
                 </Link>
                 <Link
                   to={`/tests/${testId}/history`}
                   data-testid="view-history-link"
-                  className="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 hover:text-slate-100"
+                  className="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 hover:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                 >
                   View history
                 </Link>
@@ -126,7 +126,7 @@ function TestDetailPage() {
                   disabled={isRunning}
                   aria-label={isRunning ? "Test is currently running" : "Execute this test"}
                   data-testid="execute-button"
-                  className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
+                  className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
                 >
                   {isRunning ? "Running…" : "Execute test"}
                 </button>

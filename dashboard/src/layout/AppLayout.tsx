@@ -8,7 +8,7 @@ import { NavLink, Outlet } from "react-router-dom";
 // convention already established by App.tsx / RecordedSessions.tsx.
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `px-3 py-1.5 rounded-md text-sm transition-colors ${
+  `px-3 py-1.5 rounded-md text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
     isActive
       ? "bg-slate-800 text-slate-100"
       : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"

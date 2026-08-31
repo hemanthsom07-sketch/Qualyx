@@ -36,7 +36,7 @@ function TestHistoryPage() {
     <section className="max-w-3xl mx-auto px-6 py-10">
       <Link
         to={`/tests/${testId}`}
-        className="text-sm text-slate-400 hover:text-slate-200"
+        className="text-sm text-slate-400 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 rounded"
       >
         ← Test
       </Link>

@@ -40,7 +40,10 @@ function TestAnalysisPage() {
 
   return (
     <section className="max-w-3xl mx-auto px-6 py-10">
-      <Link to={`/tests/${testId}`} className="text-sm text-slate-400 hover:text-slate-200">
+      <Link
+        to={`/tests/${testId}`}
+        className="text-sm text-slate-400 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 rounded"
+      >
         ← Test
       </Link>
 
@@ -54,7 +57,7 @@ function TestAnalysisPage() {
         <Link
           to={`/tests/${testId}/history`}
           data-testid="view-history-link"
-          className="shrink-0 rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 hover:text-slate-100"
+          className="shrink-0 rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 hover:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
         >
           View history
         </Link>
@@ -69,7 +72,7 @@ function TestAnalysisPage() {
           data-testid="analysis-window-select"
           value={window}
           onChange={(event) => setWindow(Number(event.target.value))}
-          className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-slate-200 focus:border-slate-500 focus:outline-none"
+          className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
         >
           {WINDOW_OPTIONS.map((option) => (
             <option key={option} value={option}>

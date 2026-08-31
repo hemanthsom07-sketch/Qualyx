@@ -41,14 +41,14 @@ export function RecurringSignaturesList({ signatures, testId }: RecurringSignatu
           <p className="mt-1 text-slate-500">
             <Link
               to={`/tests/${testId}/history#${executionAnchorId(sig.first_execution_id)}`}
-              className="underline hover:text-slate-300"
+              className="underline hover:text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded"
             >
               {sig.first_execution_id}
             </Link>{" "}
             →{" "}
             <Link
               to={`/tests/${testId}/history#${executionAnchorId(sig.last_execution_id)}`}
-              className="underline hover:text-slate-300"
+              className="underline hover:text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded"
             >
               {sig.last_execution_id}
             </Link>

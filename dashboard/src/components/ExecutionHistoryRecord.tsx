@@ -55,7 +55,7 @@ export function ExecutionHistoryRecord({ run, highlighted = false }: ExecutionHi
         onClick={() => setExpanded((prev) => !prev)}
         aria-expanded={expanded}
         disabled={!hasDetail}
-        className="w-full px-4 py-3 text-left disabled:cursor-default"
+        className="w-full px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500 disabled:cursor-default"
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">

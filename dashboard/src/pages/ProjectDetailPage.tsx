@@ -37,7 +37,7 @@ function ProjectDetailPage() {
 
   return (
     <section className="max-w-4xl mx-auto px-6 py-10">
-      <Link to="/projects" className="text-sm text-slate-400 hover:text-slate-200">
+      <Link to="/projects" className="text-sm text-slate-400 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 rounded">
         ← Projects
       </Link>
 

@@ -154,11 +154,17 @@ export function CreateTestForm({ projectId, isOpen, onOpenChange, onCreated }: C
 
       <div className="mt-4">
         <span className="block text-sm text-slate-400 mb-2">Steps</span>
+        {/* Stage 19: flex-1 inputs have a non-zero intrinsic min-width by
+            default in a flex row, so without min-w-0 a `fill` step's two
+            side-by-side inputs (selector + value) would refuse to shrink
+            and force this row to overflow horizontally at narrow
+            viewports. flex-wrap + basis-32 let them wrap onto their own
+            line instead of becoming unusably cramped. */}
         <div className="space-y-2">
           {steps.map((step, index) => (
             <div
               key={index}
-              className="flex items-start gap-2 rounded-md border border-slate-800 bg-slate-950 p-2"
+              className="flex flex-wrap items-start gap-2 rounded-md border border-slate-800 bg-slate-950 p-2"
             >
               <select
                 aria-label={`Step ${index + 1} type`}
@@ -180,7 +186,7 @@ export function CreateTestForm({ projectId, isOpen, onOpenChange, onCreated }: C
                   aria-label={`Step ${index + 1} URL`}
                   value={step.url}
                   onChange={(event) => updateStep(index, { type: "navigate", url: event.target.value })}
-                  className="flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-slate-200 focus:border-slate-500 focus:outline-none"
+                  className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-slate-200 focus:border-slate-500 focus:outline-none"
                 />
               )}
 
@@ -193,7 +199,7 @@ export function CreateTestForm({ projectId, isOpen, onOpenChange, onCreated }: C
                   onChange={(event) =>
                     updateStep(index, { type: "click", selector: event.target.value })
                   }
-                  className="flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-slate-200 focus:border-slate-500 focus:outline-none"
+                  className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-slate-200 focus:border-slate-500 focus:outline-none"
                 />
               )}
 
@@ -207,7 +213,7 @@ export function CreateTestForm({ projectId, isOpen, onOpenChange, onCreated }: C
                     onChange={(event) =>
                       updateStep(index, { ...step, type: "fill", selector: event.target.value })
                     }
-                    className="flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-slate-200 focus:border-slate-500 focus:outline-none"
+                    className="min-w-0 flex-1 basis-32 rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-slate-200 focus:border-slate-500 focus:outline-none"
                   />
                   <input
                     type="text"
@@ -217,7 +223,7 @@ export function CreateTestForm({ projectId, isOpen, onOpenChange, onCreated }: C
                     onChange={(event) =>
                       updateStep(index, { ...step, type: "fill", value: event.target.value })
                     }
-                    className="flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-slate-200 focus:border-slate-500 focus:outline-none"
+                    className="min-w-0 flex-1 basis-32 rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-slate-200 focus:border-slate-500 focus:outline-none"
                   />
                 </>
               )}

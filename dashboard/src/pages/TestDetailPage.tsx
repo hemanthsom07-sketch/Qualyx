@@ -104,7 +104,9 @@ function TestDetailPage() {
         {testState.status === "loading" && <StateBlock>Loading test…</StateBlock>}
 
         {testState.status === "error" && (
-          <StateBlock tone="error">Couldn't load this test: {testState.message}</StateBlock>
+          <StateBlock tone="error" onRetry={testState.retry}>
+            Couldn't load this test: {testState.message}
+          </StateBlock>
         )}
 
         {testState.status === "success" && (

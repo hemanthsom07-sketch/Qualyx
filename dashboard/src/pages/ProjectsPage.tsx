@@ -51,7 +51,7 @@ function ProjectsPage() {
       )}
 
       {state.status === "error" && (
-        <StateBlock tone="error">
+        <StateBlock tone="error" onRetry={state.retry}>
           Couldn't load projects: {state.message}
         </StateBlock>
       )}

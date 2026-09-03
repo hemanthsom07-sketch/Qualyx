@@ -46,7 +46,7 @@ function ProjectDetailPage() {
           <h2 className="text-lg font-medium text-slate-400">Loading project…</h2>
         )}
         {projectState.status === "error" && (
-          <StateBlock tone="error">
+          <StateBlock tone="error" onRetry={projectState.retry}>
             Couldn't load this project: {projectState.message}
           </StateBlock>
         )}
@@ -79,7 +79,7 @@ function ProjectDetailPage() {
       {testsState.status === "loading" && <StateBlock>Loading tests…</StateBlock>}
 
       {testsState.status === "error" && (
-        <StateBlock tone="error">
+        <StateBlock tone="error" onRetry={testsState.retry}>
           Couldn't load tests for this project: {testsState.message}
         </StateBlock>
       )}

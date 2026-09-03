@@ -10,12 +10,17 @@
 // errors since those need immediate attention; `role="status"`
 // (implicit aria-live="polite") covers loading/empty/neutral content,
 // which can wait until the user is idle.
+//
+// Stage 20: optional `onRetry` renders a Retry button for error states
+// backed by useAsync's new retry() -- previously a failed fetch left
+// the user stuck on this exact message with no in-page way to recover.
 interface StateBlockProps {
   children: React.ReactNode;
   tone?: "neutral" | "error";
+  onRetry?: () => void;
 }
 
-export function StateBlock({ children, tone = "neutral" }: StateBlockProps) {
+export function StateBlock({ children, tone = "neutral", onRetry }: StateBlockProps) {
   return (
     <div
       data-testid="state-block"
@@ -26,7 +31,17 @@ export function StateBlock({ children, tone = "neutral" }: StateBlockProps) {
           : "border-slate-700 text-slate-400"
       }`}
     >
-      {children}
+      <p>{children}</p>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          data-testid="state-block-retry"
+          className="mt-3 rounded-md border border-red-800 px-3 py-1.5 text-sm text-red-300 hover:border-red-600 hover:text-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+        >
+          Retry
+        </button>
+      )}
     </div>
   );
 }

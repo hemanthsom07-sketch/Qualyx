@@ -86,7 +86,9 @@ function TestAnalysisPage() {
       {analysisState.status === "loading" && <StateBlock>Loading analysis…</StateBlock>}
 
       {analysisState.status === "error" && (
-        <StateBlock tone="error">Couldn't load analysis: {analysisState.message}</StateBlock>
+        <StateBlock tone="error" onRetry={analysisState.retry}>
+          Couldn't load analysis: {analysisState.message}
+        </StateBlock>
       )}
 
       {analysisState.status === "success" && (

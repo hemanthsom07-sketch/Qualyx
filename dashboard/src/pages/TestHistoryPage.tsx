@@ -53,7 +53,7 @@ function TestHistoryPage() {
       {historyState.status === "loading" && <StateBlock>Loading execution history…</StateBlock>}
 
       {historyState.status === "error" && (
-        <StateBlock tone="error">
+        <StateBlock tone="error" onRetry={historyState.retry}>
           Couldn't load execution history: {historyState.message}
         </StateBlock>
       )}

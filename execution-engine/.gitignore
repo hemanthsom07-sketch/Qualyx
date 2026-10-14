@@ -1,0 +1,9 @@
+﻿# Qualyx execution-engine
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+
+# Playwright run artifacts
+test-results/
+playwright-report/

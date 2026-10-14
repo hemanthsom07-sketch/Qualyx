@@ -1,0 +1,23 @@
+﻿# Development-only PostgreSQL for local Qualyx work. NOT for production.
+# Credentials match backend/.env.example.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: qualyx_user
+      POSTGRES_PASSWORD: qualyx_password
+      POSTGRES_DB: qualyx
+    ports:
+      # Bound to localhost only. If 5432 is already in use, set
+      # QUALYX_POSTGRES_PORT (and change the port in DATABASE_URL to match).
+      - "127.0.0.1:${QUALYX_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - qualyx_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qualyx_user -d qualyx"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  qualyx_pgdata:

@@ -1,0 +1,56 @@
+﻿# ---------------------------------------------------------------------------
+# Qualyx ΓÇö root .gitignore
+# Component-level .gitignore files (backend/, dashboard/, ...) add rules
+# specific to that component. Lockfiles (package-lock.json) and all source /
+# configuration files are intentionally NOT ignored.
+# ---------------------------------------------------------------------------
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+
+# --- Environment / secrets (templates such as .env.example stay tracked) ---
+.env
+.env.*
+!.env.example
+
+# --- Node ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Build output / caches ---
+dist/
+build/
+coverage/
+htmlcov/
+.coverage
+*.tsbuildinfo
+.vite/
+.eslintcache
+
+# --- Test / runtime artifacts (Playwright, local databases, logs) ---
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+*.log
+*.sqlite
+*.sqlite3
+*.db
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
